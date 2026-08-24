@@ -2,6 +2,13 @@ import { Sidebar } from "@/components/Sidebar";
 import { adminNav } from "@/lib/nav";
 import { getAlerts } from "@/lib/data";
 
+// Force this whole route segment (and every page under /admin) to render on
+// every request instead of being cached as static HTML at build time — once
+// Supabase is live, data changes constantly (new hub readings, satellite
+// events) and a static build would freeze the dashboard at whatever the data
+// looked like at deploy time.
+export const dynamic = "force-dynamic";
+
 // Aureon Core's own operator view. Deliberately NOT linked from app/page.tsx
 // (the public landing page) — only reachable by going directly to /admin.
 // Same full-fleet-visibility philosophy Bruno already has today via the raw
