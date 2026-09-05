@@ -136,12 +136,28 @@ const getLiveSnapshot = cache(async (): Promise<LiveSnapshot | null> => {
       if (!latestEventByNode.has(e.node_id)) latestEventByNode.set(e.node_id, e);
     }
 
-    // Hub UUID -> device_id, used to link satellites/properties by the
-    // human-readable device_id instead of the internal Supabase UUID.
-    const hubDeviceIdByUuid = new Map<string, string>();
-    for (const h of hubRows ?? []) hubDeviceIdByUuid.set(h.id, h.device_id);
+    // The app's model assumes one Hub per property, but nothing in the
+    // schema enforces that — if a property ever ends up with more than one
+    // hub row (e.g. a leftover from an earlier provisioning attempt), keep
+    // only the one that actually has data (most recent last_seen) instead
+    // of whichever one the database happened to return first. This
+    // deduplication happens BEFORE building the `Hub[]` the rest of the app
+    // sees, so every function (getHub, getFleetHealth, getOverviewStats,
+    // alerts, the property cards, ...) automatically gets the right one —
+    // there's no separate raw list anyone could accidentally read from.
+    const bestHubRowByProperty = new Map<string, NonNullable<typeof hubRows>[number]>();
+    for (const h of hubRows ?? []) {
+      const existing = bestHubRowByProperty.get(h.property_id);
+      if (!existing) {
+        bestHubRowByProperty.set(h.property_id, h);
+        continue;
+      }
+      const existingSeen = existing.last_seen ? new Date(existing.last_seen).getTime() : 0;
+      const currentSeen = h.last_seen ? new Date(h.last_seen).getTime() : 0;
+      if (currentSeen > existingSeen) bestHubRowByProperty.set(h.property_id, h);
+    }
 
-    const hubs: Hub[] = (hubRows ?? []).map((h) => {
+    const hubs: Hub[] = Array.from(bestHubRowByProperty.values()).map((h) => {
       const reading = latestReadingByHub.get(h.id);
       const temperature = reading?.temperature ?? 0;
       const humidity = reading?.humidity ?? 0;
@@ -159,6 +175,13 @@ const getLiveSnapshot = cache(async (): Promise<LiveSnapshot | null> => {
       };
     });
     const hubByPropertyId = new Map(hubs.map((h) => [h.propertyId, h]));
+    // When was that hub's latest reading actually recorded — used so alerts
+    // show the real measurement time instead of "now" (the render time).
+    const readingRecordedAtByProperty = new Map<string, string>();
+    for (const h of bestHubRowByProperty.values()) {
+      const reading = latestReadingByHub.get(h.id);
+      if (reading) readingRecordedAtByProperty.set(h.property_id, reading.recorded_at);
+    }
 
     const satellites: Satellite[] = (satelliteRows ?? []).map((s) => {
       const latestEvent = latestEventByNode.get(s.device_id);
@@ -253,6 +276,11 @@ const getLiveSnapshot = cache(async (): Promise<LiveSnapshot | null> => {
       }
 
       if (hub) {
+        // Real time the hub's latest reading was recorded — not "now" (the
+        // page render time), so alerts/insights show when the condition was
+        // actually observed instead of always looking freshly-just-happened.
+        const readingAt = readingRecordedAtByProperty.get(property.id) ?? new Date().toISOString();
+
         if (hub.humidity > HUMIDITY_MOLD_RISK) {
           alerts.push({
             id: `live-a${alertN++}`,
@@ -262,7 +290,7 @@ const getLiveSnapshot = cache(async (): Promise<LiveSnapshot | null> => {
             message: `Humidade elevada (${hub.humidity}%), medida pelo hub em ${hub.location}.`,
             severity: "aviso",
             tag: "Risco de Bolor",
-            createdAt: new Date().toISOString(),
+            createdAt: readingAt,
             active: true
           });
           insights.push({
@@ -274,7 +302,7 @@ const getLiveSnapshot = cache(async (): Promise<LiveSnapshot | null> => {
             severity: "aviso",
             recommendation: "Ventilar regularmente. Verificar isolamento e presença de bolores nas paredes.",
             tag: "Risco de Bolor",
-            createdAt: new Date().toISOString()
+            createdAt: readingAt
           });
         } else if (hub.humidity > HUMIDITY_VENTILATION_INFO) {
           insights.push({
@@ -286,7 +314,7 @@ const getLiveSnapshot = cache(async (): Promise<LiveSnapshot | null> => {
             severity: "informativo",
             recommendation: "Abrir janelas 15–20 minutos pela manhã. Considerar desumidificador.",
             tag: "Informativo",
-            createdAt: new Date().toISOString()
+            createdAt: readingAt
           });
         }
 
@@ -300,7 +328,7 @@ const getLiveSnapshot = cache(async (): Promise<LiveSnapshot | null> => {
             severity: "informativo",
             recommendation: "Verificar ventilação e sombreamento. Considerar regulação de aquecimento.",
             tag: "Informativo",
-            createdAt: new Date().toISOString()
+            createdAt: readingAt
           });
         }
 
@@ -314,7 +342,7 @@ const getLiveSnapshot = cache(async (): Promise<LiveSnapshot | null> => {
             message: `Qualidade do ar degradada (VOC ${hub.voc}), medida pelo hub em ${hub.location}.`,
             severity,
             tag: "Qualidade do Ar",
-            createdAt: new Date().toISOString(),
+            createdAt: readingAt,
             active: true
           });
           insights.push({
@@ -326,7 +354,7 @@ const getLiveSnapshot = cache(async (): Promise<LiveSnapshot | null> => {
             severity,
             recommendation: "Aumentar ventilação. Identificar e remover fontes de compostos orgânicos voláteis.",
             tag: "Qualidade do Ar",
-            createdAt: new Date().toISOString()
+            createdAt: readingAt
           });
         }
       }
