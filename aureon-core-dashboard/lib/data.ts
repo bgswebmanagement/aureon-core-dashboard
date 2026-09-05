@@ -136,12 +136,28 @@ const getLiveSnapshot = cache(async (): Promise<LiveSnapshot | null> => {
       if (!latestEventByNode.has(e.node_id)) latestEventByNode.set(e.node_id, e);
     }
 
-    // Hub UUID -> device_id, used to link satellites/properties by the
-    // human-readable device_id instead of the internal Supabase UUID.
-    const hubDeviceIdByUuid = new Map<string, string>();
-    for (const h of hubRows ?? []) hubDeviceIdByUuid.set(h.id, h.device_id);
+    // The app's model assumes one Hub per property, but nothing in the
+    // schema enforces that — if a property ever ends up with more than one
+    // hub row (e.g. a leftover from an earlier provisioning attempt), keep
+    // only the one that actually has data (most recent last_seen) instead
+    // of whichever one the database happened to return first. This
+    // deduplication happens BEFORE building the `Hub[]` the rest of the app
+    // sees, so every function (getHub, getFleetHealth, getOverviewStats,
+    // alerts, the property cards, ...) automatically gets the right one —
+    // there's no separate raw list anyone could accidentally read from.
+    const bestHubRowByProperty = new Map<string, NonNullable<typeof hubRows>[number]>();
+    for (const h of hubRows ?? []) {
+      const existing = bestHubRowByProperty.get(h.property_id);
+      if (!existing) {
+        bestHubRowByProperty.set(h.property_id, h);
+        continue;
+      }
+      const existingSeen = existing.last_seen ? new Date(existing.last_seen).getTime() : 0;
+      const currentSeen = h.last_seen ? new Date(h.last_seen).getTime() : 0;
+      if (currentSeen > existingSeen) bestHubRowByProperty.set(h.property_id, h);
+    }
 
-    const hubs: Hub[] = (hubRows ?? []).map((h) => {
+    const hubs: Hub[] = Array.from(bestHubRowByProperty.values()).map((h) => {
       const reading = latestReadingByHub.get(h.id);
       const temperature = reading?.temperature ?? 0;
       const humidity = reading?.humidity ?? 0;
@@ -158,29 +174,11 @@ const getLiveSnapshot = cache(async (): Promise<LiveSnapshot | null> => {
         status: computeHubStatus(temperature, humidity, voc)
       };
     });
-    // The app's model assumes one Hub per property, but nothing in the
-    // schema enforces that — if a property ever ends up with more than one
-    // hub row (e.g. a leftover from an earlier provisioning attempt), pick
-    // the one that actually has data (most recent last_seen) instead of
-    // whichever one the database happened to return first.
-    const hubByPropertyId = new Map<string, Hub>();
-    for (const h of hubs) {
-      const existing = hubByPropertyId.get(h.propertyId);
-      if (!existing) {
-        hubByPropertyId.set(h.propertyId, h);
-        continue;
-      }
-      const existingRow = (hubRows ?? []).find((row) => row.device_id === existing.id);
-      const currentRow = (hubRows ?? []).find((row) => row.device_id === h.id);
-      const existingSeen = existingRow?.last_seen ? new Date(existingRow.last_seen).getTime() : 0;
-      const currentSeen = currentRow?.last_seen ? new Date(currentRow.last_seen).getTime() : 0;
-      if (currentSeen > existingSeen) hubByPropertyId.set(h.propertyId, h);
-    }
+    const hubByPropertyId = new Map(hubs.map((h) => [h.propertyId, h]));
     // When was that hub's latest reading actually recorded — used so alerts
     // show the real measurement time instead of "now" (the render time).
     const readingRecordedAtByProperty = new Map<string, string>();
-    for (const h of hubRows ?? []) {
-      if (hubByPropertyId.get(h.property_id)?.id !== h.device_id) continue; // skip losing duplicates
+    for (const h of bestHubRowByProperty.values()) {
       const reading = latestReadingByHub.get(h.id);
       if (reading) readingRecordedAtByProperty.set(h.property_id, reading.recorded_at);
     }
