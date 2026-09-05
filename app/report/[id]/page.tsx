@@ -3,7 +3,6 @@ import { PrintButton } from "@/components/PrintButton";
 import { getAlerts, getConsentGrants, getHistory, getHub, getProperty, getSatelliteEvents, getSatellites, getTenantByProperty } from "@/lib/data";
 import { computeBreachSegments, METRIC_LABEL, METRIC_THRESHOLD, METRIC_UNIT } from "@/lib/report";
 import { formatDateTime } from "@/lib/ui";
-import { FIXED_NOW } from "@/lib/seed";
 import { filterEventsForViewer } from "@/lib/consent";
 import { Metric } from "@/lib/types";
 import { IconLock } from "@/components/icons";
@@ -59,7 +58,7 @@ export default async function ReportPage({
             <div className="text-sm text-slate-500">Relatório de Monitorização Ambiental</div>
           </div>
           <div className="text-right text-xs text-slate-500">
-            <div>Gerado em {formatDateTime(FIXED_NOW.toISOString())}</div>
+            <div>Gerado em {formatDateTime(new Date().toISOString())}</div>
             <div>Período: últimos {days} dias</div>
           </div>
         </header>
