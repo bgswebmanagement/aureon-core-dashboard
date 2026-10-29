@@ -24,6 +24,7 @@ import { IngestPayload } from "@/lib/types";
 //   "humidity": 58,
 //   "voc": 45,
 //   "pressure": 1013.2,
+//   "sound_dbfs": -32.5,
 //   "rsn_events": [
 //     { "node_id": "AC-RSN-0007", "event": "leak_detected", "battery": 92, "rssi": -61, "timestamp": "2026-09-01T09:58:00Z" }
 //   ]
@@ -83,7 +84,8 @@ export async function POST(req: NextRequest) {
     payload.temperature !== undefined ||
     payload.humidity !== undefined ||
     payload.voc !== undefined ||
-    payload.pressure !== undefined
+    payload.pressure !== undefined ||
+    payload.sound_dbfs !== undefined
   ) {
     inserts.push(
       supabase.from("sensor_readings").insert({
@@ -93,7 +95,8 @@ export async function POST(req: NextRequest) {
         temperature: payload.temperature ?? null,
         humidity: payload.humidity ?? null,
         voc: payload.voc ?? null,
-        pressure: payload.pressure ?? null
+        pressure: payload.pressure ?? null,
+        sound_dbfs: payload.sound_dbfs ?? null
       })
     );
   }
