@@ -127,6 +127,7 @@ export const HUBS: Hub[] = RAW_HUBS.map((h) => ({
   temperature: h.temperature,
   humidity: h.humidity,
   voc: h.voc,
+  sound_dbfs: null,
   online: true,
   status: computeHubStatus(h)
 }));

@@ -14,7 +14,7 @@ export function HubCard({ hub }: { hub: Hub }) {
         </div>
         <span className={`text-xs ${hub.online ? "text-good" : "text-muted"}`}>{hub.online ? "Online" : "Offline"}</span>
       </div>
-      <div className="mt-3 grid grid-cols-3 gap-2 text-sm">
+      <div className="mt-3 grid grid-cols-4 gap-2 text-sm">
         <div>
           <div className="text-[11px] text-muted">TEMP</div>
           <div className="font-semibold">{hub.temperature}°C</div>
@@ -26,6 +26,10 @@ export function HubCard({ hub }: { hub: Hub }) {
         <div>
           <div className="text-[11px] text-muted">VOC</div>
           <div className="font-semibold">{hub.voc}</div>
+        </div>
+        <div>
+          <div className="text-[11px] text-muted">SOM</div>
+          <div className="font-semibold">{hub.sound_dbfs != null ? `${hub.sound_dbfs} dBFS` : "—"}</div>
         </div>
       </div>
     </div>

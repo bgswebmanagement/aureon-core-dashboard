@@ -19,6 +19,8 @@ export type Hub = {
   temperature: number;
   humidity: number;
   voc: number;
+  // Ambient sound LEVEL in dBFS (never audio). null = hub hasn't reported it.
+  sound_dbfs: number | null;
   online: boolean;
   status: Status;
 };
@@ -82,11 +84,16 @@ export type Insight = {
 
 export type Metric = "temperature" | "humidity" | "voc";
 
+// Metrics shown on the history page. "sound_dbfs" is kept out of `Metric`
+// because the evidence report only handles threshold-based metrics.
+export type ChartMetric = Metric | "sound_dbfs";
+
 export type HistoryPoint = {
   timestamp: string; // ISO
   temperature: number;
   humidity: number;
   voc: number;
+  sound_dbfs?: number | null; // dBFS level only, never audio
 };
 
 // A logged event from a Satellite (leak detected, motion seen, door/window

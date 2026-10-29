@@ -113,7 +113,7 @@ const getLiveSnapshot = cache(async (): Promise<LiveSnapshot | null> => {
       supabase.from("tenants").select("id, property_id, name, email"),
       supabase
         .from("sensor_readings")
-        .select("hub_id, temperature, humidity, voc, recorded_at")
+        .select("hub_id, temperature, humidity, voc, sound_dbfs, recorded_at")
         .order("recorded_at", { ascending: false })
         .limit(1000),
       supabase
@@ -125,7 +125,7 @@ const getLiveSnapshot = cache(async (): Promise<LiveSnapshot | null> => {
     ]);
 
     // Latest sensor_reading per hub (rows already newest-first).
-    const latestReadingByHub = new Map<string, { temperature: number | null; humidity: number | null; voc: number | null; recorded_at: string }>();
+    const latestReadingByHub = new Map<string, { temperature: number | null; humidity: number | null; voc: number | null; sound_dbfs: number | null; recorded_at: string }>();
     for (const r of readingRows ?? []) {
       if (!latestReadingByHub.has(r.hub_id)) latestReadingByHub.set(r.hub_id, r);
     }
@@ -170,6 +170,7 @@ const getLiveSnapshot = cache(async (): Promise<LiveSnapshot | null> => {
         temperature,
         humidity,
         voc,
+        sound_dbfs: reading?.sound_dbfs ?? null,
         online: mins !== null && mins <= HUB_ONLINE_MINUTES,
         status: computeHubStatus(temperature, humidity, voc)
       };
@@ -435,7 +436,7 @@ export async function getHistory(propertyId: string, days: number): Promise<Hist
     const cutoff = new Date(Date.now() - days * 24 * 3600000).toISOString();
     const { data } = await supabase
       .from("sensor_readings")
-      .select("hub_id, temperature, humidity, voc, recorded_at")
+      .select("hub_id, temperature, humidity, voc, sound_dbfs, recorded_at")
       .eq("property_id", propertyId)
       .gte("recorded_at", cutoff)
       .order("recorded_at", { ascending: true });
@@ -444,7 +445,8 @@ export async function getHistory(propertyId: string, days: number): Promise<Hist
       timestamp: r.recorded_at,
       temperature: r.temperature ?? 0,
       humidity: r.humidity ?? 0,
-      voc: r.voc ?? 0
+      voc: r.voc ?? 0,
+      sound_dbfs: r.sound_dbfs ?? null
     }));
   } catch (err) {
     console.error("[data] getHistory live query failed, falling back to demo data:", err);

@@ -12,19 +12,21 @@ import {
   XAxis,
   YAxis
 } from "recharts";
-import { HistoryPoint, Metric } from "@/lib/types";
+import { ChartMetric, HistoryPoint } from "@/lib/types";
 import { formatDate, formatDateTime } from "@/lib/ui";
 
-const METRIC_COLOR: Record<Metric, string> = {
+const METRIC_COLOR: Record<ChartMetric, string> = {
   temperature: "#f97316",
   humidity: "#3aa0ff",
-  voc: "#a855f7"
+  voc: "#a855f7",
+  sound_dbfs: "#14b8a6"
 };
 
-const METRIC_UNIT: Record<Metric, string> = {
+const METRIC_UNIT: Record<ChartMetric, string> = {
   temperature: "°C",
   humidity: "%",
-  voc: ""
+  voc: "",
+  sound_dbfs: " dBFS"
 };
 
 export function SingleMetricChart({
@@ -33,7 +35,7 @@ export function SingleMetricChart({
   riskLine
 }: {
   data: HistoryPoint[];
-  metric: Metric;
+  metric: ChartMetric;
   riskLine?: number;
 }) {
   const color = METRIC_COLOR[metric];
@@ -58,7 +60,14 @@ export function SingleMetricChart({
           axisLine={false}
           tickLine={false}
         />
-        <YAxis stroke="#8792a2" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} width={36} />
+        <YAxis
+          stroke="#8792a2"
+          tick={{ fontSize: 12 }}
+          axisLine={false}
+          tickLine={false}
+          width={36}
+          domain={metric === "sound_dbfs" ? [-90, 0] : undefined}
+        />
         <Tooltip
           contentStyle={{ background: "#10151d", border: "1px solid #1f2732", borderRadius: 10, fontSize: 12 }}
           labelFormatter={(v) => formatDateTime(String(v))}
@@ -98,22 +107,26 @@ export function AllMetricsChart({ data }: { data: HistoryPoint[] }) {
           axisLine={false}
           tickLine={false}
         />
-        <YAxis stroke="#8792a2" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} width={30} />
+        <YAxis yAxisId="left" stroke="#8792a2" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} width={30} />
+        {/* dBFS is a negative scale (-90..0), so it gets its own right-hand axis. */}
+        <YAxis yAxisId="sound" orientation="right" domain={[-90, 0]} stroke="#8792a2" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} width={34} />
         <Tooltip
           contentStyle={{ background: "#10151d", border: "1px solid #1f2732", borderRadius: 10, fontSize: 12 }}
           labelFormatter={(v) => formatDateTime(String(v))}
         />
-        <Line type="monotone" dataKey="temperature" stroke={METRIC_COLOR.temperature} strokeWidth={1.5} dot={false} name="Temperatura" />
-        <Line type="monotone" dataKey="humidity" stroke={METRIC_COLOR.humidity} strokeWidth={1.5} dot={false} name="Humidade" />
-        <Line type="monotone" dataKey="voc" stroke={METRIC_COLOR.voc} strokeWidth={1.5} dot={false} name="Índice VOC" />
+        <Line yAxisId="left" type="monotone" dataKey="temperature" stroke={METRIC_COLOR.temperature} strokeWidth={1.5} dot={false} name="Temperatura" />
+        <Line yAxisId="left" type="monotone" dataKey="humidity" stroke={METRIC_COLOR.humidity} strokeWidth={1.5} dot={false} name="Humidade" />
+        <Line yAxisId="left" type="monotone" dataKey="voc" stroke={METRIC_COLOR.voc} strokeWidth={1.5} dot={false} name="Índice VOC" />
+        <Line yAxisId="sound" type="monotone" dataKey="sound_dbfs" stroke={METRIC_COLOR.sound_dbfs} strokeWidth={1.5} dot={false} name="Som (dBFS)" />
       </LineChart>
     </ResponsiveContainer>
   );
 }
 
-function labelFor(metric: Metric) {
+function labelFor(metric: ChartMetric) {
   if (metric === "temperature") return "Temperatura";
   if (metric === "humidity") return "Humidade";
+  if (metric === "sound_dbfs") return "Nível de som";
   return "Índice VOC";
 }
 
@@ -128,8 +141,14 @@ function downsampleDaily(data: HistoryPoint[]): HistoryPoint[] {
     timestamp: `${day}T12:00:00.000Z`,
     temperature: avg(points.map((p) => p.temperature)),
     humidity: avg(points.map((p) => p.humidity)),
-    voc: avg(points.map((p) => p.voc))
+    voc: avg(points.map((p) => p.voc)),
+    sound_dbfs: avgOrNull(points.map((p) => p.sound_dbfs))
   }));
+}
+
+function avgOrNull(nums: (number | null | undefined)[]) {
+  const present = nums.filter((n): n is number => typeof n === "number");
+  return present.length ? avg(present) : null;
 }
 
 function avg(nums: number[]) {
