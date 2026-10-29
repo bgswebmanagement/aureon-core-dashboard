@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ChartMetric, ConsentGrant, HistoryPoint, Property, SatelliteEvent, ViewerRole } from "@/lib/types";
 import { formatDateTime } from "@/lib/ui";
 import { idealRangeLabel } from "@/lib/seed";
-import { filterEventsForViewer } from "@/lib/consent";
+import { filterEventsForViewer, isCategoryVisible } from "@/lib/consent";
 import { AllMetricsChart, SingleMetricChart } from "./HistoryChart";
 import { IconDownload, IconLock } from "./icons";
 
@@ -54,6 +54,9 @@ export function HistoryClient({
   const property = properties.find((p) => p.id === propertyId) ?? properties[0];
   const fullHistory = historyByProperty[property.id] ?? [];
   const windowed = useMemo(() => fullHistory.slice(-days * 24), [fullHistory, days]);
+  // Sound level is a restricted category: owners only get it with tenant consent.
+  const soundVisible = isCategoryVisible(viewerRole, "sound", consentGrantsByProperty[property.id] ?? []);
+  const visibleMetrics = METRICS.filter((m) => m.key !== "sound_dbfs" || soundVisible);
   const metricDef = METRICS.find((m) => m.key === metric)!;
   const latest = windowed[windowed.length - 1];
 
@@ -82,7 +85,7 @@ export function HistoryClient({
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap gap-2">
-          {METRICS.map((m) => (
+          {visibleMetrics.map((m) => (
             <button
               key={m.key}
               onClick={() => setMetric(m.key)}
@@ -140,7 +143,7 @@ export function HistoryClient({
         <div className="font-semibold">Últimas 24 Horas — Todas as Métricas</div>
         <div className="text-xs text-muted">Hub — {property.name}</div>
         <div className="mt-4">
-          <AllMetricsChart data={fullHistory} />
+          <AllMetricsChart data={fullHistory} showSound={soundVisible} />
         </div>
         <div className="mt-3 flex gap-4 text-xs text-muted">
           <span className="flex items-center gap-1.5">
@@ -152,9 +155,11 @@ export function HistoryClient({
           <span className="flex items-center gap-1.5">
             <span className="h-2 w-2 rounded-full bg-purple-500" /> Índice VOC
           </span>
-          <span className="flex items-center gap-1.5">
-            <span className="h-2 w-2 rounded-full bg-teal-500" /> Som (dBFS, eixo direito)
-          </span>
+          {soundVisible && (
+            <span className="flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full bg-teal-500" /> Som (dBFS, eixo direito)
+            </span>
+          )}
         </div>
       </div>
 
@@ -171,7 +176,7 @@ export function HistoryClient({
                 <th className="px-4 py-2 text-right">Temperatura</th>
                 <th className="px-4 py-2 text-right">Humidade</th>
                 <th className="px-4 py-2 text-right">Índice VOC</th>
-                <th className="px-4 py-2 text-right">Som (dBFS)</th>
+                {soundVisible && <th className="px-4 py-2 text-right">Som (dBFS)</th>}
               </tr>
             </thead>
             <tbody>
@@ -183,7 +188,9 @@ export function HistoryClient({
                     {p.humidity}%
                   </td>
                   <td className={`px-4 py-1.5 text-right ${metric === "voc" ? "font-semibold text-white" : ""} ${p.voc > 120 ? "text-warn" : ""}`}>{p.voc}</td>
-                  <td className={`px-4 py-1.5 text-right ${metric === "sound_dbfs" ? "font-semibold text-white" : ""}`}>{p.sound_dbfs ?? "—"}</td>
+                  {soundVisible && (
+                    <td className={`px-4 py-1.5 text-right ${metric === "sound_dbfs" ? "font-semibold text-white" : ""}`}>{p.sound_dbfs ?? "—"}</td>
+                  )}
                 </tr>
               ))}
             </tbody>

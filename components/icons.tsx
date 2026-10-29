@@ -120,6 +120,14 @@ export function IconMotion(p: { className?: string }) {
 }
 
 // Door/window satellite capability.
+export function IconSound(p: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={p.className} fill="none" stroke="currentColor" strokeWidth="1.8">
+      <path d="M4 10v4h3l5 4V6L7 10H4Z" strokeLinejoin="round" />
+      <path d="M16 9.5a4 4 0 0 1 0 5M18.5 7a7.5 7.5 0 0 1 0 10" strokeLinecap="round" />
+    </svg>
+  );
+}
 export function IconDoor(p: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" className={p.className} fill="none" stroke="currentColor" strokeWidth="1.8">

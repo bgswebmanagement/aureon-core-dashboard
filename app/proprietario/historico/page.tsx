@@ -1,19 +1,28 @@
 import { TopBar } from "@/components/TopBar";
 import { HistoryClient } from "@/components/HistoryClient";
+import { isCategoryVisible } from "@/lib/consent";
 import { getAlerts, getConsentGrants, getHistory, getProperties, getSatelliteEvents } from "@/lib/data";
 
 export default async function OwnerHistoryPage({ searchParams }: { searchParams: { property?: string } }) {
   const [properties, alerts] = await Promise.all([getProperties(), getAlerts()]);
   const initialProperty = properties.find((p) => p.id === searchParams.property) ?? properties[0];
 
-  const historyEntries = await Promise.all(properties.map(async (p) => [p.id, await getHistory(p.id, 14)] as const));
+  const grantEntries = await Promise.all(properties.map(async (p) => [p.id, await getConsentGrants(p.id)] as const));
+  const consentGrantsByProperty = Object.fromEntries(grantEntries);
+
+  // Without tenant consent the sound level must not even reach the browser,
+  // so strip it here on the server instead of only hiding it in the UI.
+  const historyEntries = await Promise.all(
+    properties.map(async (p) => {
+      const history = await getHistory(p.id, 14);
+      const soundAllowed = isCategoryVisible("owner", "sound", consentGrantsByProperty[p.id] ?? []);
+      return [p.id, soundAllowed ? history : history.map((pt) => ({ ...pt, sound_dbfs: null }))] as const;
+    })
+  );
   const historyByProperty = Object.fromEntries(historyEntries);
 
   const eventEntries = await Promise.all(properties.map(async (p) => [p.id, await getSatelliteEvents(p.id, 14)] as const));
   const satelliteEventsByProperty = Object.fromEntries(eventEntries);
-
-  const grantEntries = await Promise.all(properties.map(async (p) => [p.id, await getConsentGrants(p.id)] as const));
-  const consentGrantsByProperty = Object.fromEntries(grantEntries);
 
   return (
     <>

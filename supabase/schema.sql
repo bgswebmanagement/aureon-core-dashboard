@@ -59,8 +59,11 @@ create table if not exists sensor_readings (
   humidity numeric,
   voc numeric,
   pressure numeric,
+  sound_dbfs numeric, -- ambient sound LEVEL only (dBFS); no audio is ever stored
   created_at timestamptz not null default now()
 );
+-- For databases created before sound_dbfs existed:
+alter table sensor_readings add column if not exists sound_dbfs numeric;
 create index if not exists sensor_readings_hub_time_idx on sensor_readings (hub_id, recorded_at desc);
 
 -- One row per physical Satellite / Remote Sensor Node (ESP32-C6, battery
@@ -129,13 +132,17 @@ create table if not exists profiles (
 create table if not exists consent_grants (
   id uuid primary key default gen_random_uuid(),
   property_id uuid not null references properties(id) on delete cascade,
-  category text not null check (category in ('motion', 'doorWindow')),
+  category text not null check (category in ('motion', 'doorWindow', 'sound')),
   reason text,
   granted_at timestamptz not null default now(),
   expires_at timestamptz,
   active boolean not null default true,
   created_by uuid references auth.users(id)
 );
+-- For databases created before 'sound' existed, widen the check constraint:
+--   alter table consent_grants drop constraint consent_grants_category_check;
+--   alter table consent_grants add constraint consent_grants_category_check
+--     check (category in ('motion', 'doorWindow', 'sound'));
 create index if not exists consent_grants_property_idx on consent_grants (property_id, category);
 
 -- ---------------------------------------------------------------------------

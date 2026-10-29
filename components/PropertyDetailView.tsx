@@ -59,7 +59,7 @@ export async function PropertyDetailView({
 
         {viewerRole === "owner" && (
           <div className="rounded-xl border border-border bg-panel2 p-3 text-xs text-muted">
-            Movimento e porta/janela só ficam visíveis aqui depois do inquilino autorizar — ver secção{" "}
+            Movimento, porta/janela e nível de som só ficam visíveis aqui depois do inquilino autorizar — ver secção{" "}
             <span className="text-white">Satélites</span> abaixo. Fugas de água e condições do hub (temperatura,
             humidade, qualidade do ar) estão sempre visíveis.
           </div>
@@ -69,7 +69,7 @@ export async function PropertyDetailView({
           <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">Hub</h2>
           {hub ? (
             <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-              <HubCard hub={hub} />
+              <HubCard hub={hub} viewerRole={viewerRole} consentGrants={consentGrants} />
             </div>
           ) : (
             <div className="text-sm text-muted">Hub não encontrado.</div>

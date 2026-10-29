@@ -92,7 +92,7 @@ export function SingleMetricChart({
   );
 }
 
-export function AllMetricsChart({ data }: { data: HistoryPoint[] }) {
+export function AllMetricsChart({ data, showSound = true }: { data: HistoryPoint[]; showSound?: boolean }) {
   // Last 24h — hourly resolution.
   const last24 = data.slice(-24);
   return (
@@ -109,7 +109,9 @@ export function AllMetricsChart({ data }: { data: HistoryPoint[] }) {
         />
         <YAxis yAxisId="left" stroke="#8792a2" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} width={30} />
         {/* dBFS is a negative scale (-90..0), so it gets its own right-hand axis. */}
-        <YAxis yAxisId="sound" orientation="right" domain={[-90, 0]} stroke="#8792a2" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} width={34} />
+        {showSound && (
+          <YAxis yAxisId="sound" orientation="right" domain={[-90, 0]} stroke="#8792a2" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} width={34} />
+        )}
         <Tooltip
           contentStyle={{ background: "#10151d", border: "1px solid #1f2732", borderRadius: 10, fontSize: 12 }}
           labelFormatter={(v) => formatDateTime(String(v))}
@@ -117,7 +119,9 @@ export function AllMetricsChart({ data }: { data: HistoryPoint[] }) {
         <Line yAxisId="left" type="monotone" dataKey="temperature" stroke={METRIC_COLOR.temperature} strokeWidth={1.5} dot={false} name="Temperatura" />
         <Line yAxisId="left" type="monotone" dataKey="humidity" stroke={METRIC_COLOR.humidity} strokeWidth={1.5} dot={false} name="Humidade" />
         <Line yAxisId="left" type="monotone" dataKey="voc" stroke={METRIC_COLOR.voc} strokeWidth={1.5} dot={false} name="Índice VOC" />
-        <Line yAxisId="sound" type="monotone" dataKey="sound_dbfs" stroke={METRIC_COLOR.sound_dbfs} strokeWidth={1.5} dot={false} name="Som (dBFS)" />
+        {showSound && (
+          <Line yAxisId="sound" type="monotone" dataKey="sound_dbfs" stroke={METRIC_COLOR.sound_dbfs} strokeWidth={1.5} dot={false} name="Som (dBFS)" />
+        )}
       </LineChart>
     </ResponsiveContainer>
   );
