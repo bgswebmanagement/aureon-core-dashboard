@@ -136,6 +136,8 @@ export type IngestPayload = {
   humidity?: number;
   voc?: number;
   pressure?: number;
+  // Ambient sound LEVEL only (dBFS, e.g. -32.5) — never audio content.
+  sound_dbfs?: number;
   rsn_events?: Array<{
     node_id: string;
     event: string;
