@@ -16,7 +16,7 @@ export default async function OwnerHistoryPage({ searchParams }: { searchParams:
     properties.map(async (p) => {
       const history = await getHistory(p.id, 14);
       const soundAllowed = isCategoryVisible("owner", "sound", consentGrantsByProperty[p.id] ?? []);
-      return [p.id, soundAllowed ? history : history.map((pt) => ({ ...pt, sound_dbfs: null }))] as const;
+      return [p.id, soundAllowed ? history : history.map((pt) => ({ ...pt, sound_dbfs: null, sound_max_dbfs: null, sound_loud_seconds: null }))] as const;
     })
   );
   const historyByProperty = Object.fromEntries(historyEntries);

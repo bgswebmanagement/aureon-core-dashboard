@@ -59,7 +59,7 @@ export async function PropertyDetailView({
 
         {viewerRole === "owner" && (
           <div className="rounded-xl border border-border bg-panel2 p-3 text-xs text-muted">
-            Movimento, porta/janela e nível de som só ficam visíveis aqui depois do inquilino autorizar — ver secção{" "}
+            Movimento, porta/janela e nível de ruído relativo (dBFS) só ficam visíveis aqui depois do inquilino autorizar — ver secção{" "}
             <span className="text-white">Satélites</span> abaixo. Fugas de água e condições do hub (temperatura,
             humidade, qualidade do ar) estão sempre visíveis.
           </div>

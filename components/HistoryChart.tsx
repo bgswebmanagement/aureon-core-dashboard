@@ -66,12 +66,12 @@ export function SingleMetricChart({
           axisLine={false}
           tickLine={false}
           width={36}
-          domain={metric === "sound_dbfs" ? [-90, 0] : undefined}
+          domain={metric === "sound_dbfs" ? [-96, 0] : undefined}
         />
         <Tooltip
           contentStyle={{ background: "#10151d", border: "1px solid #1f2732", borderRadius: 10, fontSize: 12 }}
           labelFormatter={(v) => formatDateTime(String(v))}
-          formatter={(v: number) => [`${v}${METRIC_UNIT[metric]}`, labelFor(metric)]}
+          formatter={(v: number, name: string) => [`${v}${METRIC_UNIT[metric]}`, name]}
         />
         {riskLine !== undefined && (
           <ReferenceLine
@@ -86,7 +86,10 @@ export function SingleMetricChart({
             }}
           />
         )}
-        <Area type="monotone" dataKey={metric} stroke={color} strokeWidth={2} fill={`url(#fill-${metric})`} dot={{ r: 3, strokeWidth: 0, fill: color }} />
+        <Area type="monotone" dataKey={metric} name={metric === "sound_dbfs" ? "Nível equivalente (Leq)" : labelFor(metric)} stroke={color} strokeWidth={2} fill={`url(#fill-${metric})`} dot={{ r: 3, strokeWidth: 0, fill: color }} />
+        {metric === "sound_dbfs" && (
+          <Area type="monotone" dataKey="sound_max_dbfs" name="Máximo" stroke={color} strokeWidth={1.5} strokeDasharray="4 4" fill="none" dot={false} />
+        )}
       </AreaChart>
     </ResponsiveContainer>
   );
@@ -108,9 +111,9 @@ export function AllMetricsChart({ data, showSound = true }: { data: HistoryPoint
           tickLine={false}
         />
         <YAxis yAxisId="left" stroke="#8792a2" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} width={30} />
-        {/* dBFS is a negative scale (-90..0), so it gets its own right-hand axis. */}
+        {/* dBFS is a negative scale (-96..0), so it gets its own right-hand axis. */}
         {showSound && (
-          <YAxis yAxisId="sound" orientation="right" domain={[-90, 0]} stroke="#8792a2" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} width={34} />
+          <YAxis yAxisId="sound" orientation="right" domain={[-96, 0]} stroke="#8792a2" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} width={34} />
         )}
         <Tooltip
           contentStyle={{ background: "#10151d", border: "1px solid #1f2732", borderRadius: 10, fontSize: 12 }}
@@ -130,7 +133,7 @@ export function AllMetricsChart({ data, showSound = true }: { data: HistoryPoint
 function labelFor(metric: ChartMetric) {
   if (metric === "temperature") return "Temperatura";
   if (metric === "humidity") return "Humidade";
-  if (metric === "sound_dbfs") return "Nível de som";
+  if (metric === "sound_dbfs") return "Nível de ruído relativo";
   return "Índice VOC";
 }
 
@@ -146,8 +149,20 @@ function downsampleDaily(data: HistoryPoint[]): HistoryPoint[] {
     temperature: avg(points.map((p) => p.temperature)),
     humidity: avg(points.map((p) => p.humidity)),
     voc: avg(points.map((p) => p.voc)),
-    sound_dbfs: avgOrNull(points.map((p) => p.sound_dbfs))
+    sound_dbfs: avgOrNull(points.map((p) => p.sound_dbfs)),
+    sound_max_dbfs: maxOrNull(points.map((p) => p.sound_max_dbfs)),
+    sound_loud_seconds: sumOrNull(points.map((p) => p.sound_loud_seconds))
   }));
+}
+
+function maxOrNull(nums: (number | null | undefined)[]) {
+  const present = nums.filter((n): n is number => typeof n === "number");
+  return present.length ? Math.max(...present) : null;
+}
+
+function sumOrNull(nums: (number | null | undefined)[]) {
+  const present = nums.filter((n): n is number => typeof n === "number");
+  return present.length ? present.reduce((s, n) => s + n, 0) : null;
 }
 
 function avgOrNull(nums: (number | null | undefined)[]) {
