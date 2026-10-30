@@ -5,7 +5,7 @@ import { ConsentGrant, RestrictedCategory, SatelliteEvent, ViewerRole } from "./
 // shown once the tenant has explicitly granted access for that category
 // (see ConsentGrant in lib/types.ts). Leak is intentionally NOT here: it's
 // a property-damage signal the owner always needs, regardless of consent.
-const RESTRICTED_CATEGORIES: RestrictedCategory[] = ["motion", "doorWindow"];
+const RESTRICTED_CATEGORIES: RestrictedCategory[] = ["motion", "doorWindow", "sound"];
 
 export function isRestrictedCategory(type: string): type is RestrictedCategory {
   return (RESTRICTED_CATEGORIES as string[]).includes(type);

@@ -19,6 +19,8 @@ export type Hub = {
   temperature: number;
   humidity: number;
   voc: number;
+  // Ambient sound LEVEL in dBFS (never audio). null = hub hasn't reported it.
+  sound_dbfs: number | null;
   online: boolean;
   status: Status;
 };
@@ -82,11 +84,16 @@ export type Insight = {
 
 export type Metric = "temperature" | "humidity" | "voc";
 
+// Metrics shown on the history page. "sound_dbfs" is kept out of `Metric`
+// because the evidence report only handles threshold-based metrics.
+export type ChartMetric = Metric | "sound_dbfs";
+
 export type HistoryPoint = {
   timestamp: string; // ISO
   temperature: number;
   humidity: number;
   voc: number;
+  sound_dbfs?: number | null; // dBFS level only, never audio
 };
 
 // A logged event from a Satellite (leak detected, motion seen, door/window
@@ -110,11 +117,13 @@ export type SatelliteEvent = {
 // the Supabase table editor.
 export type ViewerRole = "tenant" | "owner" | "admin";
 
-// A category of satellite data that is presence/behaviour-revealing rather
-// than property-damage-revealing, and therefore requires tenant consent
-// before an owner can see it. Leak events are NOT in this list — a leak is a
+// A category of data that is presence/behaviour-revealing rather than
+// property-damage-revealing, and therefore requires tenant consent before an
+// owner can see it. Leak events are NOT in this list — a leak is a
 // property-damage signal the owner always needs to see to protect the home.
-export type RestrictedCategory = "motion" | "doorWindow";
+// "sound" is the Hub's ambient sound level (dBFS) — a number, never audio —
+// but it can still reveal activity in the home, so it is restricted too.
+export type RestrictedCategory = "motion" | "doorWindow" | "sound";
 
 // Tenant-controlled authorization for the owner to see a restricted data
 // category for their property, e.g. "for a noise/activity dispute in August

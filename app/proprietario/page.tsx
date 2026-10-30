@@ -90,7 +90,7 @@ export default async function OwnerOverview() {
               </Link>
             </div>
             <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-              {firstProperty.hub && <HubCard hub={firstProperty.hub} />}
+              {firstProperty.hub && <HubCard hub={firstProperty.hub} viewerRole="owner" consentGrants={firstProperty.consentGrants} />}
               {firstProperty.satellites.map((s) => (
                 <SatelliteCard key={s.id} satellite={s} viewerRole="owner" consentGrants={firstProperty.consentGrants} />
               ))}

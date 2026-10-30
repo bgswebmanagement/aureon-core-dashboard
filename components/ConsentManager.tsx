@@ -3,22 +3,26 @@
 import { useState } from "react";
 import { ConsentGrant, RestrictedCategory } from "@/lib/types";
 import { formatDateTime } from "@/lib/ui";
-import { IconDoor, IconLock, IconMotion, IconUnlock } from "./icons";
+import { IconDoor, IconLock, IconMotion, IconSound, IconUnlock } from "./icons";
 
 const CATEGORY_LABEL: Record<RestrictedCategory, string> = {
   motion: "Movimento",
-  doorWindow: "Porta/Janela"
+  doorWindow: "Porta/Janela",
+  sound: "Nível de som"
 };
 
 const CATEGORY_ICON: Record<RestrictedCategory, (p: { className?: string }) => JSX.Element> = {
   motion: IconMotion,
-  doorWindow: IconDoor
+  doorWindow: IconDoor,
+  sound: IconSound
 };
 
 const CATEGORY_EXPLANATION: Record<RestrictedCategory, string> = {
   motion:
     "Deteta presença/atividade na divisão (ex.: casa de banho). Útil em disputas de ruído ou atividade fora de horas.",
-  doorWindow: "Regista abertura e fecho de portas/janelas. Útil para disputas de acesso ou segurança."
+  doorWindow: "Regista abertura e fecho de portas/janelas. Útil para disputas de acesso ou segurança.",
+  sound:
+    "Nível de som ambiente medido pelo hub (apenas um número em dBFS — nunca é gravado áudio). Útil em disputas de ruído."
 };
 
 // Client-side toggle for the tenant's privacy controls. This is intentionally

@@ -42,7 +42,7 @@ export async function DevicesView({
           <section key={property.id}>
             <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">{property.name}</h2>
             <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-              {hub && <HubCard hub={hub} />}
+              {hub && <HubCard hub={hub} viewerRole={viewerRole} consentGrants={consentGrants} />}
               {satellites.map((s) => (
                 <SatelliteCard key={s.id} satellite={s} viewerRole={viewerRole} consentGrants={consentGrants} />
               ))}

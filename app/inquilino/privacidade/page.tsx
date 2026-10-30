@@ -3,9 +3,9 @@ import { IconLock, IconShield } from "@/components/icons";
 import { ConsentManager } from "@/components/ConsentManager";
 import { getAlerts, getConsentGrants, getProperty, getSatellites, isLiveMode } from "@/lib/data";
 import { DEMO_TENANT_PROPERTY_ID } from "@/lib/tenant";
-import { RestrictedCategory } from "@/lib/types";
+import { RestrictedCategory, SatelliteCapability } from "@/lib/types";
 
-const ALL_RESTRICTED: RestrictedCategory[] = ["motion", "doorWindow"];
+const ALL_RESTRICTED: RestrictedCategory[] = ["motion", "doorWindow", "sound"];
 
 export default async function TenantPrivacyPage() {
   const property = await getProperty(DEMO_TENANT_PROPERTY_ID);
@@ -20,7 +20,10 @@ export default async function TenantPrivacyPage() {
   // Only show a toggle for categories a satellite at this property can
   // actually produce — no point offering "door/window" consent if there's no
   // door/window satellite installed.
-  const categories = ALL_RESTRICTED.filter((cat) => satellites.some((s) => s.capabilities.includes(cat)));
+  // "sound" comes from the Hub itself (always present), not from a satellite.
+  const categories = ALL_RESTRICTED.filter(
+    (cat) => cat === "sound" || satellites.some((s) => s.capabilities.includes(cat as SatelliteCapability))
+  );
 
   return (
     <>
@@ -41,8 +44,8 @@ export default async function TenantPrivacyPage() {
               <p className="mt-1 text-sm text-muted">
                 Como inquilino, tem sempre acesso a todos os dados da sua habitação. O seu proprietário/agência
                 só vê, por predefinição, o que é necessário para proteger o imóvel: temperatura, humidade,
-                qualidade do ar e fugas de água. Dados de presença/atividade — movimento e abertura de
-                portas/janelas — ficam ocultos do proprietário a menos que autorize explicitamente aqui em
+                qualidade do ar e fugas de água. Dados de presença/atividade — movimento, abertura de
+                portas/janelas e nível de som — ficam ocultos do proprietário a menos que autorize explicitamente aqui em
                 baixo, por exemplo para resolver uma disputa (ruído, acessos, etc.).
               </p>
             </div>

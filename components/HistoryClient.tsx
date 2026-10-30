@@ -2,20 +2,25 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ConsentGrant, HistoryPoint, Metric, Property, SatelliteEvent, ViewerRole } from "@/lib/types";
+import { ChartMetric, ConsentGrant, HistoryPoint, Property, SatelliteEvent, ViewerRole } from "@/lib/types";
 import { formatDateTime } from "@/lib/ui";
 import { idealRangeLabel } from "@/lib/seed";
-import { filterEventsForViewer } from "@/lib/consent";
+import { filterEventsForViewer, isCategoryVisible } from "@/lib/consent";
 import { AllMetricsChart, SingleMetricChart } from "./HistoryChart";
 import { IconDownload, IconLock } from "./icons";
 
-const METRICS: { key: Metric; label: string; dot: string; risk?: number }[] = [
+const METRICS: { key: ChartMetric; label: string; dot: string; risk?: number }[] = [
   { key: "temperature", label: "Temperatura", dot: "bg-orange-500" },
   { key: "humidity", label: "Humidade", dot: "bg-accent", risk: 70 },
-  { key: "voc", label: "Índice VOC", dot: "bg-purple-500", risk: 120 }
+  { key: "voc", label: "Índice VOC", dot: "bg-purple-500", risk: 120 },
+  { key: "sound_dbfs", label: "Som (dBFS)", dot: "bg-teal-500" }
 ];
 
-const UNIT: Record<Metric, string> = { temperature: "°C", humidity: "%", voc: "" };
+const UNIT: Record<ChartMetric, string> = { temperature: "°C", humidity: "%", voc: "", sound_dbfs: " dBFS" };
+
+function rangeLabel(metric: ChartMetric) {
+  return metric === "sound_dbfs" ? "Nível de som (apenas um número, sem gravação de áudio)" : idealRangeLabel(metric);
+}
 
 const EVENT_LABEL: Record<string, string> = {
   leak: "Fuga de água",
@@ -43,12 +48,15 @@ export function HistoryClient({
   initialPropertyId: string;
 }) {
   const [propertyId, setPropertyId] = useState(initialPropertyId);
-  const [metric, setMetric] = useState<Metric>("humidity");
+  const [metric, setMetric] = useState<ChartMetric>("humidity");
   const [days, setDays] = useState<7 | 14>(7);
 
   const property = properties.find((p) => p.id === propertyId) ?? properties[0];
   const fullHistory = historyByProperty[property.id] ?? [];
   const windowed = useMemo(() => fullHistory.slice(-days * 24), [fullHistory, days]);
+  // Sound level is a restricted category: owners only get it with tenant consent.
+  const soundVisible = isCategoryVisible(viewerRole, "sound", consentGrantsByProperty[property.id] ?? []);
+  const visibleMetrics = METRICS.filter((m) => m.key !== "sound_dbfs" || soundVisible);
   const metricDef = METRICS.find((m) => m.key === metric)!;
   const latest = windowed[windowed.length - 1];
 
@@ -77,7 +85,7 @@ export function HistoryClient({
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap gap-2">
-          {METRICS.map((m) => (
+          {visibleMetrics.map((m) => (
             <button
               key={m.key}
               onClick={() => setMetric(m.key)}
@@ -113,14 +121,14 @@ export function HistoryClient({
               {metricDef.label} — Últimos {days} Dias
             </div>
             <div className="text-xs text-muted">
-              Hub · {idealRangeLabel(metric)}
+              Hub · {rangeLabel(metric)}
             </div>
           </div>
           {latest && (
             <div className="text-right">
               <div className="text-2xl font-bold">
-                {latest[metric]}
-                {UNIT[metric]}
+                {latest[metric] ?? "—"}
+                {latest[metric] != null ? UNIT[metric] : ""}
               </div>
               <div className="text-xs text-muted">Última leitura</div>
             </div>
@@ -135,7 +143,7 @@ export function HistoryClient({
         <div className="font-semibold">Últimas 24 Horas — Todas as Métricas</div>
         <div className="text-xs text-muted">Hub — {property.name}</div>
         <div className="mt-4">
-          <AllMetricsChart data={fullHistory} />
+          <AllMetricsChart data={fullHistory} showSound={soundVisible} />
         </div>
         <div className="mt-3 flex gap-4 text-xs text-muted">
           <span className="flex items-center gap-1.5">
@@ -147,6 +155,11 @@ export function HistoryClient({
           <span className="flex items-center gap-1.5">
             <span className="h-2 w-2 rounded-full bg-purple-500" /> Índice VOC
           </span>
+          {soundVisible && (
+            <span className="flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full bg-teal-500" /> Som (dBFS, eixo direito)
+            </span>
+          )}
         </div>
       </div>
 
@@ -163,6 +176,7 @@ export function HistoryClient({
                 <th className="px-4 py-2 text-right">Temperatura</th>
                 <th className="px-4 py-2 text-right">Humidade</th>
                 <th className="px-4 py-2 text-right">Índice VOC</th>
+                {soundVisible && <th className="px-4 py-2 text-right">Som (dBFS)</th>}
               </tr>
             </thead>
             <tbody>
@@ -174,6 +188,9 @@ export function HistoryClient({
                     {p.humidity}%
                   </td>
                   <td className={`px-4 py-1.5 text-right ${metric === "voc" ? "font-semibold text-white" : ""} ${p.voc > 120 ? "text-warn" : ""}`}>{p.voc}</td>
+                  {soundVisible && (
+                    <td className={`px-4 py-1.5 text-right ${metric === "sound_dbfs" ? "font-semibold text-white" : ""}`}>{p.sound_dbfs ?? "—"}</td>
+                  )}
                 </tr>
               ))}
             </tbody>

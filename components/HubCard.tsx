@@ -1,10 +1,23 @@
-import { Hub } from "@/lib/types";
+import { ConsentGrant, Hub, ViewerRole } from "@/lib/types";
+import { isCategoryVisible } from "@/lib/consent";
 import { statusDot } from "@/lib/ui";
+import { IconLock } from "./icons";
 
 // Displays the single Hub installed at a property — one card per property,
 // not one per room (the Hub's onboard sensors measure ambient conditions
 // from wherever it's plugged in).
-export function HubCard({ hub }: { hub: Hub }) {
+// The sound level is a restricted category: an owner only sees it once the
+// tenant has granted consent (lib/consent.ts); tenants and admins always do.
+export function HubCard({
+  hub,
+  viewerRole = "tenant",
+  consentGrants = []
+}: {
+  hub: Hub;
+  viewerRole?: ViewerRole;
+  consentGrants?: ConsentGrant[];
+}) {
+  const soundVisible = isCategoryVisible(viewerRole, "sound", consentGrants);
   return (
     <div className="rounded-xl border border-border bg-panel p-4">
       <div className="flex items-center justify-between">
@@ -14,7 +27,7 @@ export function HubCard({ hub }: { hub: Hub }) {
         </div>
         <span className={`text-xs ${hub.online ? "text-good" : "text-muted"}`}>{hub.online ? "Online" : "Offline"}</span>
       </div>
-      <div className="mt-3 grid grid-cols-3 gap-2 text-sm">
+      <div className="mt-3 grid grid-cols-4 gap-2 text-sm">
         <div>
           <div className="text-[11px] text-muted">TEMP</div>
           <div className="font-semibold">{hub.temperature}°C</div>
@@ -26,6 +39,16 @@ export function HubCard({ hub }: { hub: Hub }) {
         <div>
           <div className="text-[11px] text-muted">VOC</div>
           <div className="font-semibold">{hub.voc}</div>
+        </div>
+        <div>
+          <div className="text-[11px] text-muted">SOM</div>
+          {soundVisible ? (
+            <div className="font-semibold">{hub.sound_dbfs != null ? `${hub.sound_dbfs} dBFS` : "—"}</div>
+          ) : (
+            <div className="flex items-center gap-1 text-xs text-muted" title="Requer autorização do inquilino">
+              <IconLock className="h-3 w-3" /> Restrito
+            </div>
+          )}
         </div>
       </div>
     </div>
