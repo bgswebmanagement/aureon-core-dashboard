@@ -59,11 +59,15 @@ create table if not exists sensor_readings (
   humidity numeric,
   voc numeric,
   pressure numeric,
-  sound_dbfs numeric, -- ambient sound LEVEL only (dBFS); no audio is ever stored
+  sound_dbfs numeric, -- relative noise level, Leq per 10 min (dBFS); no audio is ever stored
+  sound_max_dbfs numeric, -- loudest level in the interval (dBFS)
+  sound_loud_seconds integer, -- seconds above -30 dBFS in the interval
   created_at timestamptz not null default now()
 );
 -- For databases created before sound_dbfs existed:
 alter table sensor_readings add column if not exists sound_dbfs numeric;
+alter table sensor_readings add column if not exists sound_max_dbfs numeric;
+alter table sensor_readings add column if not exists sound_loud_seconds integer;
 create index if not exists sensor_readings_hub_time_idx on sensor_readings (hub_id, recorded_at desc);
 
 -- One row per physical Satellite / Remote Sensor Node (ESP32-C6, battery

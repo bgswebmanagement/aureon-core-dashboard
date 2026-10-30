@@ -24,7 +24,9 @@ import { IngestPayload } from "@/lib/types";
 //   "humidity": 58,
 //   "voc": 45,
 //   "pressure": 1013.2,
-//   "sound_dbfs": -32.5,
+//   "sound_dbfs": -32.5,        // Leq over the interval (relative level, never audio)
+//   "sound_max_dbfs": -18.0,    // optional: loudest level in the interval
+//   "sound_loud_seconds": 14,   // optional: seconds above -30 dBFS in the interval
 //   "rsn_events": [
 //     { "node_id": "AC-RSN-0007", "event": "leak_detected", "battery": 92, "rssi": -61, "timestamp": "2026-09-01T09:58:00Z" }
 //   ]
@@ -85,7 +87,9 @@ export async function POST(req: NextRequest) {
     payload.humidity !== undefined ||
     payload.voc !== undefined ||
     payload.pressure !== undefined ||
-    payload.sound_dbfs !== undefined
+    payload.sound_dbfs !== undefined ||
+    payload.sound_max_dbfs !== undefined ||
+    payload.sound_loud_seconds !== undefined
   ) {
     inserts.push(
       supabase.from("sensor_readings").insert({
@@ -96,7 +100,9 @@ export async function POST(req: NextRequest) {
         humidity: payload.humidity ?? null,
         voc: payload.voc ?? null,
         pressure: payload.pressure ?? null,
-        sound_dbfs: payload.sound_dbfs ?? null
+        sound_dbfs: payload.sound_dbfs ?? null,
+        sound_max_dbfs: payload.sound_max_dbfs ?? null,
+        sound_loud_seconds: payload.sound_loud_seconds ?? null
       })
     );
   }

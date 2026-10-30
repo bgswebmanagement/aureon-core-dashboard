@@ -93,7 +93,9 @@ export type HistoryPoint = {
   temperature: number;
   humidity: number;
   voc: number;
-  sound_dbfs?: number | null; // dBFS level only, never audio
+  sound_dbfs?: number | null; // relative noise level, Leq over the interval (dBFS) — never audio
+  sound_max_dbfs?: number | null; // loudest level in the interval (dBFS)
+  sound_loud_seconds?: number | null; // seconds above the -30 dBFS threshold in the interval
 };
 
 // A logged event from a Satellite (leak detected, motion seen, door/window
@@ -145,8 +147,11 @@ export type IngestPayload = {
   humidity?: number;
   voc?: number;
   pressure?: number;
-  // Ambient sound LEVEL only (dBFS, e.g. -32.5) — never audio content.
+  // Relative noise LEVEL only (dBFS, e.g. -32.5) — never audio content.
+  // Per 10-minute interval: Leq, maximum, and seconds above -30 dBFS.
   sound_dbfs?: number;
+  sound_max_dbfs?: number; // optional
+  sound_loud_seconds?: number; // optional
   rsn_events?: Array<{
     node_id: string;
     event: string;

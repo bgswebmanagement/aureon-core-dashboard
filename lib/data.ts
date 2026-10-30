@@ -436,7 +436,7 @@ export async function getHistory(propertyId: string, days: number): Promise<Hist
     const cutoff = new Date(Date.now() - days * 24 * 3600000).toISOString();
     const { data } = await supabase
       .from("sensor_readings")
-      .select("hub_id, temperature, humidity, voc, sound_dbfs, recorded_at")
+      .select("hub_id, temperature, humidity, voc, sound_dbfs, sound_max_dbfs, sound_loud_seconds, recorded_at")
       .eq("property_id", propertyId)
       .gte("recorded_at", cutoff)
       .order("recorded_at", { ascending: true });
@@ -446,7 +446,9 @@ export async function getHistory(propertyId: string, days: number): Promise<Hist
       temperature: r.temperature ?? 0,
       humidity: r.humidity ?? 0,
       voc: r.voc ?? 0,
-      sound_dbfs: r.sound_dbfs ?? null
+      sound_dbfs: r.sound_dbfs ?? null,
+      sound_max_dbfs: r.sound_max_dbfs ?? null,
+      sound_loud_seconds: r.sound_loud_seconds ?? null
     }));
   } catch (err) {
     console.error("[data] getHistory live query failed, falling back to demo data:", err);

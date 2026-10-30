@@ -13,13 +13,13 @@ const METRICS: { key: ChartMetric; label: string; dot: string; risk?: number }[]
   { key: "temperature", label: "Temperatura", dot: "bg-orange-500" },
   { key: "humidity", label: "Humidade", dot: "bg-accent", risk: 70 },
   { key: "voc", label: "Índice VOC", dot: "bg-purple-500", risk: 120 },
-  { key: "sound_dbfs", label: "Som (dBFS)", dot: "bg-teal-500" }
+  { key: "sound_dbfs", label: "Ruído relativo (dBFS)", dot: "bg-teal-500" }
 ];
 
 const UNIT: Record<ChartMetric, string> = { temperature: "°C", humidity: "%", voc: "", sound_dbfs: " dBFS" };
 
 function rangeLabel(metric: ChartMetric) {
-  return metric === "sound_dbfs" ? "Nível de som (apenas um número, sem gravação de áudio)" : idealRangeLabel(metric);
+  return metric === "sound_dbfs" ? "Nível de ruído relativo (dBFS) — apenas números, sem gravação de áudio" : idealRangeLabel(metric);
 }
 
 const EVENT_LABEL: Record<string, string> = {
@@ -157,7 +157,7 @@ export function HistoryClient({
           </span>
           {soundVisible && (
             <span className="flex items-center gap-1.5">
-              <span className="h-2 w-2 rounded-full bg-teal-500" /> Som (dBFS, eixo direito)
+              <span className="h-2 w-2 rounded-full bg-teal-500" /> Ruído relativo (dBFS, eixo direito)
             </span>
           )}
         </div>
@@ -176,7 +176,9 @@ export function HistoryClient({
                 <th className="px-4 py-2 text-right">Temperatura</th>
                 <th className="px-4 py-2 text-right">Humidade</th>
                 <th className="px-4 py-2 text-right">Índice VOC</th>
-                {soundVisible && <th className="px-4 py-2 text-right">Som (dBFS)</th>}
+                {soundVisible && <th className="px-4 py-2 text-right">Ruído Leq (dBFS)</th>}
+                {soundVisible && <th className="px-4 py-2 text-right">Máx. (dBFS)</th>}
+                {soundVisible && <th className="px-4 py-2 text-right">Seg. &gt; -30 dBFS</th>}
               </tr>
             </thead>
             <tbody>
@@ -191,6 +193,8 @@ export function HistoryClient({
                   {soundVisible && (
                     <td className={`px-4 py-1.5 text-right ${metric === "sound_dbfs" ? "font-semibold text-white" : ""}`}>{p.sound_dbfs ?? "—"}</td>
                   )}
+                  {soundVisible && <td className="px-4 py-1.5 text-right">{p.sound_max_dbfs ?? "—"}</td>}
+                  {soundVisible && <td className="px-4 py-1.5 text-right">{p.sound_loud_seconds ?? "—"}</td>}
                 </tr>
               ))}
             </tbody>

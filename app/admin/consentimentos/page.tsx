@@ -8,7 +8,7 @@ import { RestrictedCategory } from "@/lib/types";
 const CATEGORY_LABEL: Record<RestrictedCategory, string> = {
   motion: "Movimento",
   doorWindow: "Porta/Janela",
-  sound: "Nível de som"
+  sound: "Nível de ruído relativo"
 };
 
 // Fleet-wide view of every tenant consent grant — who authorized what, for

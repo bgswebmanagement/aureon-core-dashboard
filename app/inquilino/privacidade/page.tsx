@@ -45,7 +45,7 @@ export default async function TenantPrivacyPage() {
                 Como inquilino, tem sempre acesso a todos os dados da sua habitação. O seu proprietário/agência
                 só vê, por predefinição, o que é necessário para proteger o imóvel: temperatura, humidade,
                 qualidade do ar e fugas de água. Dados de presença/atividade — movimento, abertura de
-                portas/janelas e nível de som — ficam ocultos do proprietário a menos que autorize explicitamente aqui em
+                portas/janelas e nível de ruído relativo (dBFS, sem gravação de áudio) — ficam ocultos do proprietário a menos que autorize explicitamente aqui em
                 baixo, por exemplo para resolver uma disputa (ruído, acessos, etc.).
               </p>
             </div>
