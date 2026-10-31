@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { PrintButton } from "@/components/PrintButton";
 import { getAlerts, getConsentGrants, getHistory, getHub, getProperty, getSatelliteEvents, getSatellites, getTenantByProperty } from "@/lib/data";
+import { formatReading, isAbove } from "@/lib/readings";
 import { computeBreachSegments, METRIC_LABEL, METRIC_THRESHOLD, METRIC_UNIT } from "@/lib/report";
 import { formatDateTime } from "@/lib/ui";
 import { filterEventsForViewer } from "@/lib/consent";
@@ -94,9 +95,9 @@ export default async function ReportPage({
               {hub && (
                 <tr className="border-b border-slate-200">
                   <td className="py-1.5">{hub.location}</td>
-                  <td className="py-1.5 text-right">{hub.temperature}°C</td>
-                  <td className={`py-1.5 text-right ${hub.humidity > 70 ? "font-semibold text-amber-700" : ""}`}>{hub.humidity}%</td>
-                  <td className={`py-1.5 text-right ${hub.voc > 120 ? "font-semibold text-amber-700" : ""}`}>{hub.voc}</td>
+                  <td className="py-1.5 text-right">{formatReading(hub.temperature, "°C")}</td>
+                  <td className={`py-1.5 text-right ${isAbove(hub.humidity, 70) ? "font-semibold text-amber-700" : ""}`}>{formatReading(hub.humidity, "%")}</td>
+                  <td className={`py-1.5 text-right ${isAbove(hub.voc, 120) ? "font-semibold text-amber-700" : ""}`}>{formatReading(hub.voc)}</td>
                   <td className="py-1.5 text-right capitalize">{property.status}</td>
                 </tr>
               )}
@@ -160,9 +161,9 @@ export default async function ReportPage({
               {history.map((p) => (
                 <tr key={p.timestamp} className="border-b border-slate-100">
                   <td className="py-0.5">{formatDateTime(p.timestamp)}</td>
-                  <td className="py-0.5 text-right">{p.temperature}°C</td>
-                  <td className={`py-0.5 text-right ${p.humidity > 70 ? "font-semibold text-amber-700" : ""}`}>{p.humidity}%</td>
-                  <td className={`py-0.5 text-right ${p.voc > 120 ? "font-semibold text-amber-700" : ""}`}>{p.voc}</td>
+                  <td className="py-0.5 text-right">{formatReading(p.temperature, "°C")}</td>
+                  <td className={`py-0.5 text-right ${isAbove(p.humidity, 70) ? "font-semibold text-amber-700" : ""}`}>{formatReading(p.humidity, "%")}</td>
+                  <td className={`py-0.5 text-right ${isAbove(p.voc, 120) ? "font-semibold text-amber-700" : ""}`}>{formatReading(p.voc)}</td>
                 </tr>
               ))}
             </tbody>

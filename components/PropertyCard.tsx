@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Hub, Property, Satellite, Tenant } from "@/lib/types";
 import { statusColor, statusLabel } from "@/lib/ui";
+import { formatReading } from "@/lib/readings";
 import { IconBuilding, IconChevron } from "./icons";
 
 export function PropertyCard({
@@ -46,15 +47,15 @@ export function PropertyCard({
       <div className="mt-4 grid grid-cols-3 gap-3 border-t border-border pt-4 text-sm">
         <div>
           <div className="text-xs text-muted">Temperatura</div>
-          <div className="font-semibold">{hub ? `${hub.temperature}°C` : "—"}</div>
+          <div className="font-semibold">{formatReading(hub?.temperature, "°C")}</div>
         </div>
         <div>
           <div className="text-xs text-muted">Humidade</div>
-          <div className="font-semibold">{hub ? `${hub.humidity}%` : "—"}</div>
+          <div className="font-semibold">{formatReading(hub?.humidity, "%")}</div>
         </div>
         <div>
           <div className="text-xs text-muted">VOC</div>
-          <div className="font-semibold">{hub ? hub.voc : "—"}</div>
+          <div className="font-semibold">{formatReading(hub?.voc)}</div>
         </div>
       </div>
 

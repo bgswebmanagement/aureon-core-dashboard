@@ -16,9 +16,12 @@ export type Hub = {
   id: string;
   propertyId: string;
   location: string;
-  temperature: number;
-  humidity: number;
-  voc: number;
+  // null = the latest reading didn't include this value (e.g. the VOC sensor
+  // is still warming up). Never coerce to 0 — 0 would look like perfect air.
+  temperature: number | null;
+  humidity: number | null;
+  // VOC falls back to the last valid value from the past 30 minutes (see lib/data.ts).
+  voc: number | null;
   // Ambient sound LEVEL in dBFS (never audio). null = hub hasn't reported it.
   sound_dbfs: number | null;
   online: boolean;
@@ -90,9 +93,10 @@ export type ChartMetric = Metric | "sound_dbfs";
 
 export type HistoryPoint = {
   timestamp: string; // ISO
-  temperature: number;
-  humidity: number;
-  voc: number;
+  // null = this reading omitted the value (chart leaves a gap).
+  temperature: number | null;
+  humidity: number | null;
+  voc: number | null;
   sound_dbfs?: number | null; // relative noise level, Leq over the interval (dBFS) — never audio
   sound_max_dbfs?: number | null; // loudest level in the interval (dBFS)
   sound_loud_seconds?: number | null; // seconds above the -30 dBFS threshold in the interval

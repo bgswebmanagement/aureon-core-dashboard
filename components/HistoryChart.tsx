@@ -86,7 +86,7 @@ export function SingleMetricChart({
             }}
           />
         )}
-        <Area type="monotone" dataKey={metric} name={metric === "sound_dbfs" ? "Nível equivalente (Leq)" : labelFor(metric)} stroke={color} strokeWidth={2} fill={`url(#fill-${metric})`} dot={{ r: 3, strokeWidth: 0, fill: color }} />
+        <Area type="monotone" dataKey={metric} connectNulls={false} name={metric === "sound_dbfs" ? "Nível equivalente (Leq)" : labelFor(metric)} stroke={color} strokeWidth={2} fill={`url(#fill-${metric})`} dot={{ r: 3, strokeWidth: 0, fill: color }} />
         {metric === "sound_dbfs" && (
           <Area type="monotone" dataKey="sound_max_dbfs" name="Máximo" stroke={color} strokeWidth={1.5} strokeDasharray="4 4" fill="none" dot={false} />
         )}
@@ -119,9 +119,10 @@ export function AllMetricsChart({ data, showSound = true }: { data: HistoryPoint
           contentStyle={{ background: "#10151d", border: "1px solid #1f2732", borderRadius: 10, fontSize: 12 }}
           labelFormatter={(v) => formatDateTime(String(v))}
         />
-        <Line yAxisId="left" type="monotone" dataKey="temperature" stroke={METRIC_COLOR.temperature} strokeWidth={1.5} dot={false} name="Temperatura" />
-        <Line yAxisId="left" type="monotone" dataKey="humidity" stroke={METRIC_COLOR.humidity} strokeWidth={1.5} dot={false} name="Humidade" />
-        <Line yAxisId="left" type="monotone" dataKey="voc" stroke={METRIC_COLOR.voc} strokeWidth={1.5} dot={false} name="Índice VOC" />
+        {/* null values (e.g. VOC while the sensor warms up) leave a gap — connectNulls stays off. */}
+        <Line yAxisId="left" type="monotone" dataKey="temperature" stroke={METRIC_COLOR.temperature} strokeWidth={1.5} dot={false} connectNulls={false} name="Temperatura" />
+        <Line yAxisId="left" type="monotone" dataKey="humidity" stroke={METRIC_COLOR.humidity} strokeWidth={1.5} dot={false} connectNulls={false} name="Humidade" />
+        <Line yAxisId="left" type="monotone" dataKey="voc" stroke={METRIC_COLOR.voc} strokeWidth={1.5} dot={false} connectNulls={false} name="Índice VOC" />
         {showSound && (
           <Line yAxisId="sound" type="monotone" dataKey="sound_dbfs" stroke={METRIC_COLOR.sound_dbfs} strokeWidth={1.5} dot={false} name="Som (dBFS)" />
         )}
@@ -146,9 +147,9 @@ function downsampleDaily(data: HistoryPoint[]): HistoryPoint[] {
   }
   return Array.from(byDay.entries()).map(([day, points]) => ({
     timestamp: `${day}T12:00:00.000Z`,
-    temperature: avg(points.map((p) => p.temperature)),
-    humidity: avg(points.map((p) => p.humidity)),
-    voc: avg(points.map((p) => p.voc)),
+    temperature: avgOrNull(points.map((p) => p.temperature)),
+    humidity: avgOrNull(points.map((p) => p.humidity)),
+    voc: avgOrNull(points.map((p) => p.voc)),
     sound_dbfs: avgOrNull(points.map((p) => p.sound_dbfs)),
     sound_max_dbfs: maxOrNull(points.map((p) => p.sound_max_dbfs)),
     sound_loud_seconds: sumOrNull(points.map((p) => p.sound_loud_seconds))

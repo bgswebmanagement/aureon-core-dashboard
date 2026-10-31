@@ -6,6 +6,7 @@ import { AlertCard } from "@/components/AlertCard";
 import { IconAlert, IconDroplet, IconThermo, IconWind } from "@/components/icons";
 import { getAlerts, getHub, getProperty, getSatellites, getTenantByProperty } from "@/lib/data";
 import { statusColor, statusLabel } from "@/lib/ui";
+import { formatReading, VOC_WARMING_UP_LABEL } from "@/lib/readings";
 import { DEMO_TENANT_PROPERTY_ID } from "@/lib/tenant";
 
 export default async function TenantOverview() {
@@ -33,9 +34,9 @@ export default async function TenantOverview() {
         </div>
 
         <div className="grid grid-cols-3 gap-4">
-          <StatCard icon={<IconThermo className="h-5 w-5" />} value={hub ? `${hub.temperature}°C` : "—"} label="Temperatura" tone="accent" />
-          <StatCard icon={<IconDroplet className="h-5 w-5" />} value={hub ? `${hub.humidity}%` : "—"} label="Humidade" tone="good" />
-          <StatCard icon={<IconWind className="h-5 w-5" />} value={hub ? hub.voc : "—"} label="Índice VOC" tone="default" />
+          <StatCard icon={<IconThermo className="h-5 w-5" />} value={formatReading(hub?.temperature, "°C")} label="Temperatura" tone="accent" />
+          <StatCard icon={<IconDroplet className="h-5 w-5" />} value={formatReading(hub?.humidity, "%")} label="Humidade" tone="good" />
+          <StatCard icon={<IconWind className="h-5 w-5" />} value={formatReading(hub?.voc)} label="Índice VOC" sublabel={hub && hub.voc == null ? VOC_WARMING_UP_LABEL : undefined} tone="default" />
         </div>
 
         <section>

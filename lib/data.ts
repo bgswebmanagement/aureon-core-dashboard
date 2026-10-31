@@ -27,6 +27,7 @@ import {
   TENANTS
 } from "./seed";
 import { getSupabaseServiceClient } from "./supabase";
+import { averageOrNull } from "./readings";
 
 // ---------------------------------------------------------------------------
 // Single data-access surface used by every page/component.
@@ -61,9 +62,33 @@ const LOW_BATTERY_THRESHOLD = 30; // %
 const HUB_ONLINE_MINUTES = 30; // hub reports ~every 10 min
 const SATELLITE_ONLINE_HOURS = 48; // satellites are event-driven, not continuous
 
-function computeHubStatus(temperature: number, humidity: number, voc: number): Status {
-  if (humidity > HUMIDITY_MOLD_RISK || temperature > TEMP_HIGH || voc > VOC_CRITICAL) return "atencao";
+const VOC_FALLBACK_MINUTES = 30; // card shows the last valid VOC from this window if the latest reading has none
+const VOC_CONSECUTIVE_READINGS = 3; // a VOC alert needs this many consecutive valid readings above the limit
+
+type VocLevel = "aviso" | "critico";
+
+// Missing values (null) are ignored — they never count as "above" anything.
+function computeHubStatus(temperature: number | null, humidity: number | null, sustainedVoc: VocLevel | null): Status {
+  if (
+    (humidity != null && humidity > HUMIDITY_MOLD_RISK) ||
+    (temperature != null && temperature > TEMP_HIGH) ||
+    sustainedVoc === "critico"
+  ) {
+    return "atencao";
+  }
   return "normal";
+}
+
+// `recentValid` = a hub's valid (non-null) VOC readings, newest first. The VOC
+// index is relative to the location, so a single high reading is not enough:
+// all of the last N valid readings must be above the limit. The level is set
+// by the lowest of them (all must clear the critical limit to be "critico").
+function sustainedVocLevel(recentValid: { voc: number }[]): VocLevel | null {
+  if (recentValid.length < VOC_CONSECUTIVE_READINGS) return null;
+  const lowest = Math.min(...recentValid.slice(0, VOC_CONSECUTIVE_READINGS).map((r) => r.voc));
+  if (lowest > VOC_CRITICAL) return "critico";
+  if (lowest > VOC_POOR_AIR) return "aviso";
+  return null;
 }
 
 function minutesSince(iso: string | null): number | null {
@@ -130,6 +155,19 @@ const getLiveSnapshot = cache(async (): Promise<LiveSnapshot | null> => {
       if (!latestReadingByHub.has(r.hub_id)) latestReadingByHub.set(r.hub_id, r);
     }
 
+    // Most recent valid (non-null) VOC readings per hub, newest first. The
+    // firmware omits `voc` while the sensor warms up, so the latest reading
+    // may have none.
+    const recentVocByHub = new Map<string, { voc: number; recorded_at: string }[]>();
+    for (const r of readingRows ?? []) {
+      if (r.voc == null) continue;
+      const list = recentVocByHub.get(r.hub_id) ?? [];
+      if (list.length < VOC_CONSECUTIVE_READINGS) {
+        list.push({ voc: r.voc, recorded_at: r.recorded_at });
+        recentVocByHub.set(r.hub_id, list);
+      }
+    }
+
     // Latest rsn_event per satellite device_id (rows already newest-first).
     const latestEventByNode = new Map<string, { event: string; recorded_at: string }>();
     for (const e of eventRows ?? []) {
@@ -157,11 +195,21 @@ const getLiveSnapshot = cache(async (): Promise<LiveSnapshot | null> => {
       if (currentSeen > existingSeen) bestHubRowByProperty.set(h.property_id, h);
     }
 
+    const sustainedVocByProperty = new Map<string, { level: VocLevel; value: number; recordedAt: string }>();
+
     const hubs: Hub[] = Array.from(bestHubRowByProperty.values()).map((h) => {
       const reading = latestReadingByHub.get(h.id);
-      const temperature = reading?.temperature ?? 0;
-      const humidity = reading?.humidity ?? 0;
-      const voc = reading?.voc ?? 0;
+      const temperature = reading?.temperature ?? null;
+      const humidity = reading?.humidity ?? null;
+      const recentVoc = recentVocByHub.get(h.id) ?? [];
+      const lastValidVoc = recentVoc[0];
+      // Latest VOC if present; otherwise the last valid one from the past 30
+      // minutes; otherwise null (sensor warming up) — never 0.
+      const voc =
+        reading?.voc ??
+        (lastValidVoc && (minutesSince(lastValidVoc.recorded_at) ?? Infinity) <= VOC_FALLBACK_MINUTES ? lastValidVoc.voc : null);
+      const vocLevel = sustainedVocLevel(recentVoc);
+      if (vocLevel) sustainedVocByProperty.set(h.property_id, { level: vocLevel, value: lastValidVoc.voc, recordedAt: lastValidVoc.recorded_at });
       const mins = minutesSince(h.last_seen);
       return {
         id: h.device_id,
@@ -172,7 +220,7 @@ const getLiveSnapshot = cache(async (): Promise<LiveSnapshot | null> => {
         voc,
         sound_dbfs: reading?.sound_dbfs ?? null,
         online: mins !== null && mins <= HUB_ONLINE_MINUTES,
-        status: computeHubStatus(temperature, humidity, voc)
+        status: computeHubStatus(temperature, humidity, vocLevel)
       };
     });
     const hubByPropertyId = new Map(hubs.map((h) => [h.propertyId, h]));
@@ -282,13 +330,16 @@ const getLiveSnapshot = cache(async (): Promise<LiveSnapshot | null> => {
         // actually observed instead of always looking freshly-just-happened.
         const readingAt = readingRecordedAtByProperty.get(property.id) ?? new Date().toISOString();
 
-        if (hub.humidity > HUMIDITY_MOLD_RISK) {
+        // Missing readings (null) never trigger alerts or insights.
+        const { humidity, temperature } = hub;
+
+        if (humidity != null && humidity > HUMIDITY_MOLD_RISK) {
           alerts.push({
             id: `live-a${alertN++}`,
             propertyId: property.id,
             deviceLabel: hub.location,
             title: "Risco de Bolor Detetado",
-            message: `Humidade elevada (${hub.humidity}%), medida pelo hub em ${hub.location}.`,
+            message: `Humidade elevada (${humidity}%), medida pelo hub em ${hub.location}.`,
             severity: "aviso",
             tag: "Risco de Bolor",
             createdAt: readingAt,
@@ -299,19 +350,19 @@ const getLiveSnapshot = cache(async (): Promise<LiveSnapshot | null> => {
             propertyId: property.id,
             deviceLabel: hub.location,
             title: "Risco de Bolor Detetado",
-            message: `Humidade elevada (${hub.humidity}%), medida pelo hub em ${hub.location}.`,
+            message: `Humidade elevada (${humidity}%), medida pelo hub em ${hub.location}.`,
             severity: "aviso",
             recommendation: "Ventilar regularmente. Verificar isolamento e presença de bolores nas paredes.",
             tag: "Risco de Bolor",
             createdAt: readingAt
           });
-        } else if (hub.humidity > HUMIDITY_VENTILATION_INFO) {
+        } else if (humidity != null && humidity > HUMIDITY_VENTILATION_INFO) {
           insights.push({
             id: `live-i${insightN++}`,
             propertyId: property.id,
             deviceLabel: hub.location,
             title: "Ventilação Recomendada",
-            message: `A humidade medida pelo hub (${hub.humidity}%) está acima do ideal (40–60%).`,
+            message: `A humidade medida pelo hub (${humidity}%) está acima do ideal (40–60%).`,
             severity: "informativo",
             recommendation: "Abrir janelas 15–20 minutos pela manhã. Considerar desumidificador.",
             tag: "Informativo",
@@ -319,13 +370,13 @@ const getLiveSnapshot = cache(async (): Promise<LiveSnapshot | null> => {
           });
         }
 
-        if (hub.temperature > TEMP_INFO) {
+        if (temperature != null && temperature > TEMP_INFO) {
           insights.push({
             id: `live-i${insightN++}`,
             propertyId: property.id,
             deviceLabel: hub.location,
             title: "Temperatura Acima do Normal",
-            message: `Temperatura de ${hub.temperature}°C. Valores acima de ${TEMP_INFO}°C podem indicar má ventilação.`,
+            message: `Temperatura de ${temperature}°C. Valores acima de ${TEMP_INFO}°C podem indicar má ventilação.`,
             severity: "informativo",
             recommendation: "Verificar ventilação e sombreamento. Considerar regulação de aquecimento.",
             tag: "Informativo",
@@ -333,29 +384,32 @@ const getLiveSnapshot = cache(async (): Promise<LiveSnapshot | null> => {
           });
         }
 
-        if (hub.voc > VOC_POOR_AIR) {
-          const severity = hub.voc > VOC_CRITICAL ? "critico" : "aviso";
+        // VOC: only after 3 consecutive valid readings above the limit — a
+        // single high reading, or missing ones, never raise an alert.
+        const sustainedVoc = sustainedVocByProperty.get(property.id);
+        if (sustainedVoc) {
+          const severity = sustainedVoc.level;
           alerts.push({
             id: `live-a${alertN++}`,
             propertyId: property.id,
             deviceLabel: hub.location,
-            title: "Qualidade do Ar Degradada",
-            message: `Qualidade do ar degradada (VOC ${hub.voc}), medida pelo hub em ${hub.location}.`,
+            title: "Nível de VOC Acima do Habitual",
+            message: `Nível de VOC acima do habitual (VOC ${sustainedVoc.value}) em ${VOC_CONSECUTIVE_READINGS} leituras consecutivas, medido pelo hub em ${hub.location}.`,
             severity,
-            tag: "Qualidade do Ar",
-            createdAt: readingAt,
+            tag: "Nível de VOC",
+            createdAt: sustainedVoc.recordedAt,
             active: true
           });
           insights.push({
             id: `live-i${insightN++}`,
             propertyId: property.id,
             deviceLabel: hub.location,
-            title: "Qualidade do Ar Comprometida",
-            message: `Índice VOC elevado (${hub.voc}) em ${hub.location}. Possíveis fontes: produtos de limpeza, tintas, mobiliário novo.`,
+            title: "Nível de VOC Acima do Habitual",
+            message: `Índice VOC elevado (${sustainedVoc.value}) em ${hub.location}, acima do habitual para este local. Possíveis fontes: produtos de limpeza, tintas, mobiliário novo.`,
             severity,
             recommendation: "Aumentar ventilação. Identificar e remover fontes de compostos orgânicos voláteis.",
-            tag: "Qualidade do Ar",
-            createdAt: readingAt
+            tag: "Nível de VOC",
+            createdAt: sustainedVoc.recordedAt
           });
         }
       }
@@ -443,9 +497,9 @@ export async function getHistory(propertyId: string, days: number): Promise<Hist
 
     return (data ?? []).map((r) => ({
       timestamp: r.recorded_at,
-      temperature: r.temperature ?? 0,
-      humidity: r.humidity ?? 0,
-      voc: r.voc ?? 0,
+      temperature: r.temperature ?? null,
+      humidity: r.humidity ?? null,
+      voc: r.voc ?? null,
       sound_dbfs: r.sound_dbfs ?? null,
       sound_max_dbfs: r.sound_max_dbfs ?? null,
       sound_loud_seconds: r.sound_loud_seconds ?? null
@@ -517,9 +571,10 @@ export async function getOverviewStats() {
   const satellites = live ? live.satellites : SATELLITES;
   const alerts = live ? live.alerts : ALERTS;
 
-  const avgTemp = hubs.length ? hubs.reduce((s, h) => s + h.temperature, 0) / hubs.length : 0;
-  const avgHum = hubs.length ? hubs.reduce((s, h) => s + h.humidity, 0) / hubs.length : 0;
-  const avgVoc = hubs.length ? hubs.reduce((s, h) => s + h.voc, 0) / hubs.length : 0;
+  // Hubs without a value (null) are left out of the average, not counted as 0.
+  const avgTemp = averageOrNull(hubs.map((h) => h.temperature));
+  const avgHum = averageOrNull(hubs.map((h) => h.humidity));
+  const avgVoc = averageOrNull(hubs.map((h) => h.voc));
   const withAlerts = properties.filter((p) => p.status !== "normal").length;
   const criticalAlerts = alerts.filter((a) => a.severity === "critico" && a.active).length;
 
@@ -529,9 +584,9 @@ export async function getOverviewStats() {
     totalSatellites: satellites.length,
     propertiesWithAlerts: withAlerts,
     propertiesNormal: properties.length - withAlerts,
-    avgTemp: round1(avgTemp),
-    avgHumidity: round1(avgHum),
-    avgVoc: Math.round(avgVoc),
+    avgTemp: avgTemp == null ? null : round1(avgTemp),
+    avgHumidity: avgHum == null ? null : round1(avgHum),
+    avgVoc: avgVoc == null ? null : Math.round(avgVoc),
     criticalAlerts
   };
 }
