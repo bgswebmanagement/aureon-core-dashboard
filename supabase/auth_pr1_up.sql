@@ -7,7 +7,8 @@
 -- utilizadores nem owner_id preenchido, por isso nada muda para ninguém.
 --
 -- Efeitos que NÃO são puramente aditivos (propositadamente):
---   * sensor_readings: retira SELECT a anon/authenticated (só a vista lê).
+--   * sensor_readings e satellites: retira SELECT a anon/authenticated (só as
+--     vistas sensor_readings_visible e satellites_visible leem).
 --   * consent_grants: retira UPDATE/DELETE a authenticated e dá só
 --     UPDATE (active).
 --   * profiles: retira escrita a anon/authenticated.
@@ -74,11 +75,11 @@ create policy "membros: dono ve inquilinos" on tenants
 create policy "membros: hubs" on hubs
   for select using (is_member(property_id));
 
-create policy "membros: satelites" on satellites
-  for select using (is_member(property_id));
-
-create policy "membros: alertas" on alerts
-  for select using (is_member(property_id));
+-- Alertas: por agora SÓ o inquilino lê (fechado por omissão). A regra para o
+-- dono depende de uma coluna "category" ainda por aprovar (ver proposta no PR);
+-- a tabela está vazia e a app calcula os alertas em lib/data.ts.
+create policy "membros: alertas (so inquilino)" on alerts
+  for select using (my_role() = 'tenant' and is_member(property_id));
 
 -- Eventos: o inquilino vê tudo; qualquer outro membro (dono) vê fugas sempre
 -- e o resto só com consentimento ativo. Tipos de evento desconhecidos ficam
@@ -114,6 +115,44 @@ revoke all on sensor_readings_visible from anon;
 grant select on sensor_readings_visible to authenticated;
 revoke select on sensor_readings from anon, authenticated;
 
+-- 4b) Satélites. O firmware atualiza satellites.last_seen e satellites.battery
+--     a CADA evento (app/api/ingest/route.ts), por isso num satélite com
+--     movimento ou porta/janela revelam QUANDO houve atividade. (O satélite
+--     real AC-RSN-0001 tem fuga+movimento.) Regra: a atividade (last_seen e
+--     bateria exata) só aparece ao inquilino, ou ao dono quando existe
+--     consentimento para CADA categoria restrita do satélite. Satélites só de
+--     fuga não são restritos. Sem consentimento a bateria aparece arredondada
+--     para baixo à dezena (87 -> 80): chega para saber se está a acabar, mas
+--     não deixa detetar um evento pela variação de 1 ponto.
+--     A tabela satellites deixa de ser legível diretamente.
+create or replace function can_see_satellite_activity(p uuid, caps text[]) returns boolean
+  language sql stable security definer set search_path = public as $$
+  select is_member(p) and (
+    my_role() = 'tenant'
+    or (
+      ('motion' <> all (caps) or has_consent(p, 'motion'))
+      and ('doorWindow' <> all (caps) or has_consent(p, 'doorWindow'))
+    )
+  )
+$$;
+revoke execute on function can_see_satellite_activity(uuid, text[]) from public, anon;
+grant execute on function can_see_satellite_activity(uuid, text[]) to authenticated;
+
+create or replace view satellites_visible as
+  select
+    id, device_id, hub_id, property_id, label, capabilities,
+    case when can_see_satellite_activity(property_id, capabilities)
+         then battery else floor(battery / 10) * 10 end as battery,
+    case when can_see_satellite_activity(property_id, capabilities)
+         then last_seen end as last_seen,
+    created_at
+  from satellites
+  where is_member(property_id);
+
+revoke all on satellites_visible from anon;
+grant select on satellites_visible to authenticated;
+revoke select on satellites from anon, authenticated;
+
 -- 5) Consentimentos — vários inquilinos por casa:
 --    * qualquer inquilino da casa pode dar OU retirar;
 --    * a retirada por qualquer um prevalece (desativa o consentimento ativo);
@@ -123,6 +162,11 @@ revoke select on sensor_readings from anon, authenticated;
 alter table consent_grants add column if not exists revoked_by uuid references auth.users(id);
 alter table consent_grants add column if not exists revoked_at timestamptz;
 
+-- ATENÇÃO PR 6: este índice conta como "ativo" um consentimento com
+-- active = true MESMO que expires_at já tenha passado (a regra de acesso já
+-- ignora os expirados, o índice não). Por isso, antes de criar um novo
+-- consentimento, a aplicação tem de desativar (active = false) os expirados
+-- dessa casa+categoria; senão o novo é recusado com unique_violation.
 create unique index if not exists consent_one_active_per_category
   on consent_grants (property_id, category) where active;
 
@@ -130,8 +174,12 @@ create or replace function consent_grants_stamp() returns trigger
   language plpgsql as $$
 begin
   if tg_op = 'INSERT' then
-    -- quem dá o consentimento é sempre a sessão, nunca um valor enviado pelo cliente
-    if auth.uid() is not null then new.created_by := auth.uid(); end if;
+    -- quem dá o consentimento e quando são sempre da sessão/servidor,
+    -- nunca valores enviados pelo cliente
+    if auth.uid() is not null then
+      new.created_by := auth.uid();
+      new.granted_at := now();
+    end if;
     new.revoked_by := null;
     new.revoked_at := null;
   else

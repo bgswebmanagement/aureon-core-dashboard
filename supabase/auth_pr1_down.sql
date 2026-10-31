@@ -6,6 +6,7 @@
 
 -- permissões (estado original: anon e authenticated tinham tudo, sob RLS)
 grant all on sensor_readings to anon, authenticated;
+grant all on satellites to anon, authenticated;
 grant update, delete on consent_grants to authenticated;
 grant insert, update, delete on profiles to anon, authenticated;
 
@@ -22,9 +23,10 @@ alter table consent_grants drop column if exists revoked_by;
 
 -- vista e regras novas
 drop view if exists sensor_readings_visible;
+drop view if exists satellites_visible;
+drop function if exists can_see_satellite_activity(uuid, text[]);
 drop policy if exists "membros: eventos" on rsn_events;
-drop policy if exists "membros: alertas" on alerts;
-drop policy if exists "membros: satelites" on satellites;
+drop policy if exists "membros: alertas (so inquilino)" on alerts;
 drop policy if exists "membros: hubs" on hubs;
 drop policy if exists "membros: dono ve inquilinos" on tenants;
 drop policy if exists "membros: casas" on properties;
