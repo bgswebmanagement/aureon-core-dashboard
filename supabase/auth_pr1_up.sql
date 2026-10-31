@@ -75,11 +75,18 @@ create policy "membros: dono ve inquilinos" on tenants
 create policy "membros: hubs" on hubs
   for select using (is_member(property_id));
 
--- Alertas: por agora SÓ o inquilino lê (fechado por omissão). A regra para o
--- dono depende de uma coluna "category" ainda por aprovar (ver proposta no PR);
--- a tabela está vazia e a app calcula os alertas em lib/data.ts.
-create policy "membros: alertas (so inquilino)" on alerts
-  for select using (my_role() = 'tenant' and is_member(property_id));
+-- Alertas: a "tag" é texto traduzível para mostrar no ecrã, por isso a
+-- segurança assenta numa coluna "category" com valores fixos (a tabela está
+-- vazia; a app calcula hoje os alertas em lib/data.ts).
+--   * inquilino: vê tudo da sua casa;
+--   * dono: leak, humidity, temperature, voc sempre; motion, doorWindow e
+--     sound só com consentimento ativo e não expirado dessa categoria;
+--     'device' (ex.: satélite offline) segue a mesma regra do last_seen do
+--     satélite a que está ligado (can_see_satellite_activity); sem satélite
+--     ligado é visível.
+--   * uma categoria nova só fica visível ao dono quando esta regra for
+--     alterada de propósito (fechado por omissão).
+-- (as regras de "alerts" estão mais abaixo, na secção 4c)
 
 -- Eventos: o inquilino vê tudo; qualquer outro membro (dono) vê fugas sempre
 -- e o resto só com consentimento ativo. Tipos de evento desconhecidos ficam
@@ -152,6 +159,38 @@ create or replace view satellites_visible as
 revoke all on satellites_visible from anon;
 grant select on satellites_visible to authenticated;
 revoke select on satellites from anon, authenticated;
+
+-- 4c) Alertas (ver comentário em 3). Os alertas 'device' ligados a um satélite
+--     consultam a tabela satellites, que o utilizador já não pode ler: por
+--     isso a consulta vive numa função security definer.
+alter table alerts add column if not exists category text;
+alter table alerts add constraint alerts_category_check check (
+  category in ('leak', 'humidity', 'temperature', 'voc', 'device', 'motion', 'doorWindow', 'sound')
+);
+-- (a tabela tem de estar vazia; confirmar antes de aplicar)
+alter table alerts alter column category set not null;
+
+create or replace function can_see_alert_satellite(sat uuid) returns boolean
+  language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1 from satellites s
+    where s.id = sat and can_see_satellite_activity(s.property_id, s.capabilities)
+  )
+$$;
+revoke execute on function can_see_alert_satellite(uuid) from public, anon;
+grant execute on function can_see_alert_satellite(uuid) to authenticated;
+
+create policy "membros: alertas" on alerts
+  for select using (
+    is_member(property_id) and (
+      my_role() = 'tenant'
+      or category in ('leak', 'humidity', 'temperature', 'voc')
+      or (category = 'motion' and has_consent(property_id, 'motion'))
+      or (category = 'doorWindow' and has_consent(property_id, 'doorWindow'))
+      or (category = 'sound' and has_consent(property_id, 'sound'))
+      or (category = 'device' and (satellite_id is null or can_see_alert_satellite(satellite_id)))
+    )
+  );
 
 -- 5) Consentimentos — vários inquilinos por casa:
 --    * qualquer inquilino da casa pode dar OU retirar;

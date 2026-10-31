@@ -68,8 +68,21 @@ insert into rsn_events (hub_id, property_id, node_id, event, recorded_at) values
   ('a1a1a1a1-a1a1-a1a1-a1a1-a1a1a1a1a1a1', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'TESTE-S1', 'tipo_desconhecido', now()),
   ('b1b1b1b1-b1b1-b1b1-b1b1-b1b1b1b1b1b1', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'TESTE-SB', 'motion_detected', now());
 
-insert into alerts (property_id, title, message, severity, tag) values
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'TESTE alerta', 'TESTE', 'aviso', 'Informativo');
+-- Casa A: 11 alertas (4 sempre visíveis ao dono, 3 restritos, 4 "device")
+insert into alerts (property_id, satellite_id, title, message, severity, tag, category) values
+  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', null, 'T leak', 'T', 'critico', 'x', 'leak'),
+  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', null, 'T hum', 'T', 'aviso', 'x', 'humidity'),
+  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', null, 'T temp', 'T', 'aviso', 'x', 'temperature'),
+  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', null, 'T voc', 'T', 'aviso', 'x', 'voc'),
+  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', null, 'T motion', 'T', 'aviso', 'x', 'motion'),
+  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', null, 'T door', 'T', 'aviso', 'x', 'doorWindow'),
+  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', null, 'T sound', 'T', 'aviso', 'x', 'sound'),
+  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', null, 'T device sem satelite', 'T', 'aviso', 'x', 'device'),
+  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', (select id from satellites where device_id = 'TESTE-S2'), 'T device S2 (so fuga)', 'T', 'aviso', 'x', 'device'),
+  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', (select id from satellites where device_id = 'TESTE-S1'), 'T device S1 (porta)', 'T', 'aviso', 'x', 'device'),
+  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', (select id from satellites where device_id = 'TESTE-S4'), 'T device S4 (movimento+porta)', 'T', 'aviso', 'x', 'device'),
+  ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', null, 'T leak B', 'T', 'critico', 'x', 'leak'),
+  ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', null, 'T motion B', 'T', 'aviso', 'x', 'motion');
 
 -- ===== T01: o dono NÃO lê a tabela sensor_readings diretamente =============
 do $$
@@ -254,22 +267,28 @@ exception when others then
   insert into teste_resultados (teste, resultado) values ('T10 inquilino vê satélites com last_seen e bateria exatos', 'FALHOU: ' || sqlerrm);
 end $$;
 
--- ===== T11: alertas — por agora só o inquilino ==============================
+-- ===== T11: alertas sem consentimento — dono vê leak/humidade/temperatura/VOC,
+--           não vê porta/movimento/som nem device de satélite restrito;
+--           inquilino vê os 11 ===============================================
 do $$
-declare n_dono int; n_inq int;
+declare n_dono int; cats text; n_inq int;
 begin
   perform set_config('request.jwt.claims', '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}', true);
   set local role authenticated;
-  select count(*) into n_dono from alerts;
+  select count(*), string_agg(category, ',' order by category) into n_dono, cats from alerts;
   reset role;
   perform set_config('request.jwt.claims', '{"sub":"22222222-2222-2222-2222-222222222222","role":"authenticated"}', true);
   set local role authenticated;
   select count(*) into n_inq from alerts;
   reset role;
-  if n_dono <> 0 or n_inq <> 1 then raise exception 'dono vê % alertas, inquilino % (esperado 0 e 1)', n_dono, n_inq; end if;
-  insert into teste_resultados (teste, resultado) values ('T11 alertas: dono 0, inquilino 1 (fechado até à proposta)', 'OK');
+  -- esperado: leak, humidity, temperature, voc + device sem satélite + device do satélite só-fuga (S2)
+  if cats is distinct from 'device,device,humidity,leak,temperature,voc' then
+    raise exception 'dono vê categorias [%] (esperado device,device,humidity,leak,temperature,voc)', cats;
+  end if;
+  if n_inq <> 11 then raise exception 'inquilino vê % alertas (esperado 11)', n_inq; end if;
+  insert into teste_resultados (teste, resultado) values ('T11 alertas sem consentimento: dono vê 6 (leak, humidade, temperatura, VOC, 2 device livres); inquilino vê 11', 'OK');
 exception when others then
-  insert into teste_resultados (teste, resultado) values ('T11 alertas: dono 0, inquilino 1 (fechado até à proposta)', 'FALHOU: ' || sqlerrm);
+  insert into teste_resultados (teste, resultado) values ('T11 alertas sem consentimento: dono vê 6 (leak, humidade, temperatura, VOC, 2 device livres); inquilino vê 11', 'FALHOU: ' || sqlerrm);
 end $$;
 
 -- ===== T12: inquilino A1 autoriza movimento e som; autor e data não se falsificam
@@ -511,7 +530,7 @@ end $$;
 
 -- ===== T21: isolamento entre casas (dono B) =================================
 do $$
-declare n_ev int; n_cg int; n_a int; ok boolean; n_sat int; n_sat_a int; sb_seen int; n_al int;
+declare n_ev int; n_cg int; n_a int; ok boolean; n_sat int; n_sat_a int; sb_seen int; n_al int; n_al_b int;
 begin
   perform set_config('request.jwt.claims', '{"sub":"44444444-4444-4444-4444-444444444444","role":"authenticated"}', true);
   set local role authenticated;
@@ -521,14 +540,16 @@ begin
   select has_consent('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'motion') into ok;
   select count(*), count(*) filter (where property_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'), count(last_seen)
     into n_sat, n_sat_a, sb_seen from satellites_visible;
-  select count(*) into n_al from alerts;
+  select count(*) into n_al from alerts where property_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+  select count(*) into n_al_b from alerts;
   reset role;
   if n_ev <> 0 then raise exception 'dono B vê % eventos (esperado 0)', n_ev; end if;
   if n_cg <> 0 or n_a <> 0 then raise exception 'dono B vê dados da casa A'; end if;
   if ok then raise exception 'has_consent revelou consentimento de outra casa'; end if;
   if n_sat <> 1 or n_sat_a <> 0 then raise exception 'dono B vê % satélites (% da casa A); esperado 1 e 0', n_sat, n_sat_a; end if;
   if sb_seen <> 0 then raise exception 'dono B vê last_seen do seu satélite de movimento sem consentimento'; end if;
-  if n_al <> 0 then raise exception 'dono B vê % alertas', n_al; end if;
+  if n_al <> 0 then raise exception 'dono B vê % alertas da casa A', n_al; end if;
+  if n_al_b <> 1 then raise exception 'dono B vê % alertas (esperado 1: o leak da casa B; o de movimento fica escondido)', n_al_b; end if;
   insert into teste_resultados (teste, resultado) values ('T21 dono B não vê nada da casa A', 'OK');
 exception when others then
   insert into teste_resultados (teste, resultado) values ('T21 dono B não vê nada da casa A', 'FALHOU: ' || sqlerrm);
@@ -578,6 +599,139 @@ begin
   insert into teste_resultados (teste, resultado) values ('T23 histórico mantido; novo consentimento volta a dar acesso', 'OK');
 exception when others then
   insert into teste_resultados (teste, resultado) values ('T23 histórico mantido; novo consentimento volta a dar acesso', 'FALHOU: ' || sqlerrm);
+end $$;
+
+-- Estado nesta altura (casa A): movimento ATIVO, som ATIVO, porta retirada.
+
+-- ===== T24: com movimento e som autorizados, o dono vê esses alertas; porta não
+do $$
+declare cats text;
+begin
+  perform set_config('request.jwt.claims', '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}', true);
+  set local role authenticated;
+  select string_agg(category, ',' order by category) into cats from alerts;
+  reset role;
+  if cats is distinct from 'device,device,humidity,leak,motion,sound,temperature,voc' then
+    raise exception 'dono vê [%] (esperado device,device,humidity,leak,motion,sound,temperature,voc)', cats;
+  end if;
+  insert into teste_resultados (teste, resultado) values ('T24 alertas com movimento+som autorizados: aparecem; porta e device S1/S4 continuam escondidos', 'OK');
+exception when others then
+  insert into teste_resultados (teste, resultado) values ('T24 alertas com movimento+som autorizados: aparecem; porta e device S1/S4 continuam escondidos', 'FALHOU: ' || sqlerrm);
+end $$;
+
+-- ===== T25: com a porta também autorizada, abrem o alerta de porta e os device S1 e S4
+do $$
+declare cats text;
+begin
+  perform set_config('request.jwt.claims', '{"sub":"22222222-2222-2222-2222-222222222222","role":"authenticated"}', true);
+  set local role authenticated;
+  insert into consent_grants (property_id, category) values ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'doorWindow');
+  reset role;
+
+  perform set_config('request.jwt.claims', '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}', true);
+  set local role authenticated;
+  select string_agg(category, ',' order by category) into cats from alerts;
+  reset role;
+  if cats is distinct from 'device,device,device,device,doorWindow,humidity,leak,motion,sound,temperature,voc' then
+    raise exception 'dono vê [%] (esperado os 11 alertas)', cats;
+  end if;
+  insert into teste_resultados (teste, resultado) values ('T25 com porta autorizada: abre alerta de porta e device S1/S4 (segue a regra do last_seen)', 'OK');
+exception when others then
+  insert into teste_resultados (teste, resultado) values ('T25 com porta autorizada: abre alerta de porta e device S1/S4 (segue a regra do last_seen)', 'FALHOU: ' || sqlerrm);
+end $$;
+
+-- ===== T26: consentimento de porta expirado volta a esconder-os =============
+do $$
+declare cats text;
+begin
+  -- (como administrador) faz expirar o consentimento de porta
+  update consent_grants set expires_at = now() - interval '1 hour'
+    where category = 'doorWindow' and property_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' and active;
+
+  perform set_config('request.jwt.claims', '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}', true);
+  set local role authenticated;
+  select string_agg(category, ',' order by category) into cats from alerts;
+  reset role;
+  if cats is distinct from 'device,device,humidity,leak,motion,sound,temperature,voc' then
+    raise exception 'dono vê [%] depois de a porta expirar (esperado 8 alertas, sem porta nem device S1/S4)', cats;
+  end if;
+  insert into teste_resultados (teste, resultado) values ('T26 consentimento de porta expirado volta a esconder alerta de porta e device S1/S4', 'OK');
+exception when others then
+  insert into teste_resultados (teste, resultado) values ('T26 consentimento de porta expirado volta a esconder alerta de porta e device S1/S4', 'FALHOU: ' || sqlerrm);
+end $$;
+
+-- ===== T27: nem dono nem inquilino criam alertas pela API ===================
+do $$
+declare uid text;
+begin
+  foreach uid in array array['11111111-1111-1111-1111-111111111111', '22222222-2222-2222-2222-222222222222'] loop
+    perform set_config('request.jwt.claims', json_build_object('sub', uid, 'role', 'authenticated')::text, true);
+    set local role authenticated;
+    begin
+      insert into alerts (property_id, title, message, severity, tag, category)
+        values ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'falso', 'falso', 'aviso', 'x', 'leak');
+      reset role;
+      raise exception 'utilizador % criou um alerta', uid;
+    exception when insufficient_privilege then
+      null;
+    end;
+    reset role;
+  end loop;
+  insert into teste_resultados (teste, resultado) values ('T27 dono e inquilino não criam alertas', 'OK');
+exception when others then
+  insert into teste_resultados (teste, resultado) values ('T27 dono e inquilino não criam alertas', 'FALHOU: ' || sqlerrm);
+end $$;
+
+-- ===== T28: ninguém com sessão escreve nas vistas nem nas tabelas de leitura
+--           (exige auth_pr1b_privileges.sql aplicado) =========================
+do $$
+declare uid text; p constant uuid := 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+        h constant uuid := 'a1a1a1a1-a1a1-a1a1-a1a1-a1a1a1a1a1a1'; n int;
+begin
+  foreach uid in array array['11111111-1111-1111-1111-111111111111', '22222222-2222-2222-2222-222222222222'] loop
+    perform set_config('request.jwt.claims', json_build_object('sub', uid, 'role', 'authenticated')::text, true);
+    set local role authenticated;
+    begin
+      update satellites_visible set label = 'HACKED' where property_id = p;
+      reset role;
+      raise exception '% alterou satellites_visible', uid;
+    exception when insufficient_privilege then null;
+    end;
+    set local role authenticated;
+    begin
+      insert into sensor_readings_visible (hub_id, property_id, recorded_at, temperature) values (h, p, now(), 99);
+      reset role;
+      raise exception '% inseriu em sensor_readings_visible', uid;
+    exception when insufficient_privilege then null;
+    end;
+    set local role authenticated;
+    begin
+      delete from sensor_readings_visible where property_id = p;
+      reset role;
+      raise exception '% apagou de sensor_readings_visible', uid;
+    exception when insufficient_privilege then null;
+    end;
+    set local role authenticated;
+    begin
+      delete from satellites_visible where property_id = p;
+      reset role;
+      raise exception '% apagou de satellites_visible', uid;
+    exception when insufficient_privilege then null;
+    end;
+    set local role authenticated;
+    begin
+      insert into sensor_readings (hub_id, property_id, recorded_at, temperature) values (h, p, now(), 99);
+      reset role;
+      raise exception '% inseriu diretamente em sensor_readings', uid;
+    exception when insufficient_privilege then null;
+    end;
+    reset role;
+  end loop;
+  select count(*) into n from satellites where label = 'HACKED';
+  if n <> 0 then raise exception 'há % satélites alterados', n; end if;
+  insert into teste_resultados (teste, resultado) values ('T28 dono e inquilino não escrevem nas vistas nem nas tabelas de leitura', 'OK');
+exception when others then
+  insert into teste_resultados (teste, resultado) values ('T28 dono e inquilino não escrevem nas vistas nem nas tabelas de leitura', 'FALHOU: ' || sqlerrm);
 end $$;
 
 select teste, resultado from teste_resultados order by id;
