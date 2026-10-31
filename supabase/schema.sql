@@ -227,6 +227,13 @@ create policy "owners read consent grants for their properties" on consent_grant
     property_id in (select id from properties where owner_id = auth.uid())
   );
 
+-- Accounts / login (in progress): per-person access via property_members,
+-- consent enforced in the database, and the sensor_readings_visible view are
+-- defined in supabase/auth_pr1_up.sql, followed by the least-privilege grants
+-- in supabase/auth_pr1b_privileges.sql (rollback: auth_pr1_down.sql, tests:
+-- auth_pr1_tests.sql). The old owner_id / profiles.property_id policies above
+-- stay until the app reads with user sessions; this file is rewritten then.
+--
 -- Note: app/api/ingest/route.ts uses the SUPABASE_SERVICE_ROLE_KEY, which
 -- bypasses RLS entirely — that's expected, since the Hub firmware has no
 -- Supabase Auth session, only the shared INGEST_TOKEN.
