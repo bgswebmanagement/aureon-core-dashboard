@@ -1,5 +1,5 @@
 -- ---------------------------------------------------------------------------
--- Aureon Core — Auth PR 1b: CORREÇÃO de permissões (aplicar DEPOIS de auth_pr1_up.sql)
+-- Aureon Core — Auth PR 1b: PRIVILÉGIO MÍNIMO (aplicar DEPOIS de auth_pr1_up.sql)
 --
 -- Problema encontrado ao verificar a base de dados real depois do PR 1:
 -- as vistas sensor_readings_visible e satellites_visible nasceram com
@@ -9,20 +9,27 @@
 -- inserir leituras, alterar satélites e apagar leituras. Provado numa
 -- transação com ROLLBACK (UPDATE 2 linhas, INSERT aceite, DELETE 1 linha).
 --
+-- Regra desta correção: uma conta de cliente (authenticated) só LÊ, exceto
+-- consent_grants (INSERT + UPDATE da coluna active). A anon não acede a nada.
 -- Só REVOKEs (reversíveis). A service_role (ingest e /admin) não é afetada.
 -- Reversão: auth_pr1_down.sql repõe "grant all" a anon/authenticated.
 -- ---------------------------------------------------------------------------
 
--- Vistas e tabelas de leitura: ninguém escreve por aqui (só a service_role, no ingest)
+-- anon nunca precisa das tabelas da app (lê-se com service_role ou com sessão)
+revoke all on properties, tenants, hubs, rsn_events, alerts, sensor_readings,
+  satellites, consent_grants, profiles, property_members from anon;
+
+-- authenticated: nas tabelas de dados só pode ler (e onde a leitura já foi
+-- retirada, nem isso: lê pelas vistas)
+revoke insert, update, delete, truncate, references, trigger
+  on properties, tenants, hubs, rsn_events, alerts, satellites, sensor_readings from authenticated;
+
+-- vistas: só leitura
 revoke insert, update, delete, truncate, references, trigger
   on sensor_readings_visible, satellites_visible from anon, authenticated;
-revoke insert, update, delete, truncate, references, trigger
-  on sensor_readings, satellites from anon, authenticated;
 
--- anon nunca precisa destas tabelas (a app lê com service_role ou com sessão)
-revoke all on sensor_readings, satellites, consent_grants, profiles, property_members from anon;
-
--- authenticated: sem TRUNCATE/REFERENCES/TRIGGER nas tabelas sensíveis
+-- tabelas de contas/consentimentos: sem TRUNCATE/REFERENCES/TRIGGER
+-- (consent_grants mantém INSERT, SELECT e UPDATE só da coluna active)
 revoke truncate, references, trigger on consent_grants, profiles, property_members from authenticated;
 
 -- aviso do verificador do Supabase (function_search_path_mutable)

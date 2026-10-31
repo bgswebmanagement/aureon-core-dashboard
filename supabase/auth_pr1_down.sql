@@ -7,7 +7,8 @@
 
 -- permissões (estado original: anon e authenticated tinham tudo, sob RLS)
 -- (repõe também o que auth_pr1b_privileges.sql retirou)
-grant all on sensor_readings, satellites, consent_grants, profiles to anon, authenticated;
+grant all on properties, tenants, hubs, rsn_events, alerts, sensor_readings,
+  satellites, consent_grants, profiles to anon, authenticated;
 
 -- alertas
 drop policy if exists "membros: alertas" on alerts;

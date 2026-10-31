@@ -682,56 +682,145 @@ exception when others then
   insert into teste_resultados (teste, resultado) values ('T27 dono e inquilino não criam alertas', 'FALHOU: ' || sqlerrm);
 end $$;
 
--- ===== T28: ninguém com sessão escreve nas vistas nem nas tabelas de leitura
---           (exige auth_pr1b_privileges.sql aplicado) =========================
+-- ===== T28: dono e inquilino NÃO inserem, alteram nem apagam em nenhuma tabela
+--           nem vista (exige auth_pr1b_privileges.sql aplicado) ===============
 do $$
-declare uid text; p constant uuid := 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
-        h constant uuid := 'a1a1a1a1-a1a1-a1a1-a1a1-a1a1a1a1a1a1'; n int;
+declare uid text; t text; ok boolean;
 begin
   foreach uid in array array['11111111-1111-1111-1111-111111111111', '22222222-2222-2222-2222-222222222222'] loop
     perform set_config('request.jwt.claims', json_build_object('sub', uid, 'role', 'authenticated')::text, true);
-    set local role authenticated;
-    begin
-      update satellites_visible set label = 'HACKED' where property_id = p;
+    foreach t in array array['properties', 'tenants', 'hubs', 'rsn_events', 'alerts', 'satellites',
+                             'sensor_readings', 'sensor_readings_visible', 'satellites_visible'] loop
+      set local role authenticated;
+      begin
+        execute format('insert into %I default values', t);
+        ok := true;
+      exception when insufficient_privilege then ok := false;
+                when others then ok := true;  -- falhou por outro motivo = o privilégio existe
+      end;
       reset role;
-      raise exception '% alterou satellites_visible', uid;
-    exception when insufficient_privilege then null;
-    end;
-    set local role authenticated;
-    begin
-      insert into sensor_readings_visible (hub_id, property_id, recorded_at, temperature) values (h, p, now(), 99);
+      if ok then raise exception 'utilizador % tem privilégio de INSERT em %', uid, t; end if;
+
+      set local role authenticated;
+      begin
+        -- (id de rsn_events/sensor_readings é "generated always": usa-se outra coluna)
+        execute format('update %I set %I = %I', t, case when t = 'properties' then 'id' else 'property_id' end,
+                       case when t = 'properties' then 'id' else 'property_id' end);
+        ok := true;
+      exception when insufficient_privilege then ok := false;
+                when others then ok := true;
+      end;
       reset role;
-      raise exception '% inseriu em sensor_readings_visible', uid;
-    exception when insufficient_privilege then null;
-    end;
-    set local role authenticated;
-    begin
-      delete from sensor_readings_visible where property_id = p;
+      if ok then raise exception 'utilizador % tem privilégio de UPDATE em %', uid, t; end if;
+
+      set local role authenticated;
+      begin
+        execute format('delete from %I where false', t);
+        ok := true;
+      exception when insufficient_privilege then ok := false;
+                when others then ok := true;
+      end;
       reset role;
-      raise exception '% apagou de sensor_readings_visible', uid;
-    exception when insufficient_privilege then null;
-    end;
-    set local role authenticated;
-    begin
-      delete from satellites_visible where property_id = p;
-      reset role;
-      raise exception '% apagou de satellites_visible', uid;
-    exception when insufficient_privilege then null;
-    end;
-    set local role authenticated;
-    begin
-      insert into sensor_readings (hub_id, property_id, recorded_at, temperature) values (h, p, now(), 99);
-      reset role;
-      raise exception '% inseriu diretamente em sensor_readings', uid;
-    exception when insufficient_privilege then null;
-    end;
-    reset role;
+      if ok then raise exception 'utilizador % tem privilégio de DELETE em %', uid, t; end if;
+    end loop;
   end loop;
-  select count(*) into n from satellites where label = 'HACKED';
-  if n <> 0 then raise exception 'há % satélites alterados', n; end if;
-  insert into teste_resultados (teste, resultado) values ('T28 dono e inquilino não escrevem nas vistas nem nas tabelas de leitura', 'OK');
+  insert into teste_resultados (teste, resultado) values ('T28 dono e inquilino não inserem/alteram/apagam em nenhuma tabela nem vista', 'OK');
 exception when others then
-  insert into teste_resultados (teste, resultado) values ('T28 dono e inquilino não escrevem nas vistas nem nas tabelas de leitura', 'FALHOU: ' || sqlerrm);
+  insert into teste_resultados (teste, resultado) values ('T28 dono e inquilino não inserem/alteram/apagam em nenhuma tabela nem vista', 'FALHOU: ' || sqlerrm);
+end $$;
+
+-- ===== T29: matriz de privilégios (anon: nada; authenticated: só leitura, exceto consentimentos)
+do $$
+declare t text; p text; erros text := '';
+        todos constant text[] := array['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER'];
+        escrita constant text[] := array['INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER'];
+begin
+  -- anon: nenhum privilégio em nada
+  foreach t in array array['properties','tenants','hubs','rsn_events','alerts','sensor_readings','satellites',
+                           'consent_grants','profiles','property_members','sensor_readings_visible','satellites_visible'] loop
+    foreach p in array todos loop
+      if has_table_privilege('anon', 'public.' || t, p) then erros := erros || format(' anon:%s:%s', t, p); end if;
+    end loop;
+  end loop;
+  -- authenticated: lê, não escreve
+  foreach t in array array['properties','tenants','hubs','rsn_events','alerts','profiles','property_members','sensor_readings_visible','satellites_visible'] loop
+    if not has_table_privilege('authenticated', 'public.' || t, 'SELECT') then erros := erros || format(' auth:%s:falta SELECT', t); end if;
+    foreach p in array escrita loop
+      if has_table_privilege('authenticated', 'public.' || t, p) then erros := erros || format(' auth:%s:%s', t, p); end if;
+    end loop;
+  end loop;
+  -- authenticated: nem lê as tabelas de base (lê pelas vistas)
+  foreach t in array array['sensor_readings','satellites'] loop
+    foreach p in array todos loop
+      if has_table_privilege('authenticated', 'public.' || t, p) then erros := erros || format(' auth:%s:%s', t, p); end if;
+    end loop;
+  end loop;
+  -- authenticated: consent_grants = SELECT + INSERT + UPDATE(active)
+  if not has_table_privilege('authenticated', 'public.consent_grants', 'SELECT') then erros := erros || ' consent:falta SELECT'; end if;
+  if not has_table_privilege('authenticated', 'public.consent_grants', 'INSERT') then erros := erros || ' consent:falta INSERT'; end if;
+  foreach p in array array['UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER'] loop
+    if has_table_privilege('authenticated', 'public.consent_grants', p) then erros := erros || format(' consent:%s', p); end if;
+  end loop;
+  if not has_column_privilege('authenticated', 'public.consent_grants', 'active', 'UPDATE') then erros := erros || ' consent:falta UPDATE(active)'; end if;
+  if has_column_privilege('authenticated', 'public.consent_grants', 'property_id', 'UPDATE') then erros := erros || ' consent:UPDATE(property_id)'; end if;
+  if erros <> '' then raise exception 'privilégios fora do esperado:%', erros; end if;
+  insert into teste_resultados (teste, resultado) values ('T29 matriz de privilégios: anon nada; authenticated só lê (consentimentos: insert + update de active)', 'OK');
+exception when others then
+  insert into teste_resultados (teste, resultado) values ('T29 matriz de privilégios: anon nada; authenticated só lê (consentimentos: insert + update de active)', 'FALHOU: ' || sqlerrm);
+end $$;
+
+-- ===== T30: depois do privilégio mínimo, continuam a ler a casa e a dar/retirar consentimento
+do $$
+declare np int; nh int; nv int; s numeric; nsat int; nev int; nal int; linhas int; ativo boolean; por_retirar uuid;
+begin
+  -- (como administrador) não deixa consentimento de movimento ativo da casa A
+  update consent_grants set active = false
+    where property_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' and category = 'motion' and active;
+
+  perform set_config('request.jwt.claims', '{"sub":"22222222-2222-2222-2222-222222222222","role":"authenticated"}', true);
+  set local role authenticated;
+  select count(*) into np from properties;
+  select count(*) into nh from hubs;
+  select count(*), max(sound_dbfs) into nv, s from sensor_readings_visible;
+  select count(*) into nsat from satellites_visible;
+  select count(*) into nev from rsn_events;
+  select count(*) into nal from alerts;
+  reset role;
+  if np <> 1 or nh <> 1 or nv <> 1 or s is distinct from -40 or nsat <> 4 or nev <> 4 or nal <> 11 then
+    raise exception 'inquilino A1 lê casas=% hubs=% leituras=% som=% satélites=% eventos=% alertas=% (esperado 1,1,1,-40,4,4,11)', np, nh, nv, s, nsat, nev, nal;
+  end if;
+
+  perform set_config('request.jwt.claims', '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}', true);
+  set local role authenticated;
+  select count(*) into np from properties;
+  select count(*) into nh from hubs;
+  select count(*) into nv from sensor_readings_visible;
+  select count(*) into nsat from satellites_visible;
+  reset role;
+  if np <> 1 or nh <> 1 or nv <> 1 or nsat <> 4 then
+    raise exception 'dono A lê casas=% hubs=% leituras=% satélites=% (esperado 1,1,1,4)', np, nh, nv, nsat;
+  end if;
+
+  -- inquilino A1 dá consentimento; inquilino A2 retira
+  perform set_config('request.jwt.claims', '{"sub":"22222222-2222-2222-2222-222222222222","role":"authenticated"}', true);
+  set local role authenticated;
+  insert into consent_grants (property_id, category) values ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'motion');
+  reset role;
+  perform set_config('request.jwt.claims', '{"sub":"33333333-3333-3333-3333-333333333333","role":"authenticated"}', true);
+  set local role authenticated;
+  update consent_grants set active = false
+    where property_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' and category = 'motion' and active;
+  get diagnostics linhas = row_count;
+  reset role;
+  select active, revoked_by into ativo, por_retirar from consent_grants
+    where property_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' and category = 'motion'
+    order by granted_at desc, id desc limit 1;
+  if linhas <> 1 or ativo or por_retirar is distinct from '33333333-3333-3333-3333-333333333333' then
+    raise exception 'dar/retirar consentimento falhou (linhas=%, ativo=%, retirou=%)', linhas, ativo, por_retirar;
+  end if;
+  insert into teste_resultados (teste, resultado) values ('T30 continuam a ler a sua casa e a dar/retirar consentimento', 'OK');
+exception when others then
+  insert into teste_resultados (teste, resultado) values ('T30 continuam a ler a sua casa e a dar/retirar consentimento', 'FALHOU: ' || sqlerrm);
 end $$;
 
 select teste, resultado from teste_resultados order by id;

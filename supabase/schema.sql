@@ -229,7 +229,8 @@ create policy "owners read consent grants for their properties" on consent_grant
 
 -- Accounts / login (in progress): per-person access via property_members,
 -- consent enforced in the database, and the sensor_readings_visible view are
--- defined in supabase/auth_pr1_up.sql (rollback: auth_pr1_down.sql, tests:
+-- defined in supabase/auth_pr1_up.sql, followed by the least-privilege grants
+-- in supabase/auth_pr1b_privileges.sql (rollback: auth_pr1_down.sql, tests:
 -- auth_pr1_tests.sql). The old owner_id / profiles.property_id policies above
 -- stay until the app reads with user sessions; this file is rewritten then.
 --
