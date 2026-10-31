@@ -5,6 +5,7 @@ import { PropertyCard } from "@/components/PropertyCard";
 import { HubCard } from "@/components/HubCard";
 import { SatelliteCard } from "@/components/SatelliteCard";
 import { IconAlert, IconBuilding, IconDroplet, IconThermo } from "@/components/icons";
+import { formatReading } from "@/lib/readings";
 import { getAlerts, getConsentGrants, getHub, getOverviewStats, getProperties, getSatellites, getTenantByProperty } from "@/lib/data";
 
 export default async function OwnerOverview() {
@@ -45,9 +46,9 @@ export default async function OwnerOverview() {
         )}
 
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-          <StatCard icon={<IconThermo className="h-5 w-5" />} value={`${stats.avgTemp}°C`} label="Temperatura Média" sublabel="Todos os hubs" tone="accent" />
-          <StatCard icon={<IconDroplet className="h-5 w-5" />} value={`${stats.avgHumidity}%`} label="Humidade Média" sublabel="Dentro do normal" tone="good" />
-          <StatCard icon={<IconBuilding className="h-5 w-5" />} value={stats.avgVoc} label="Índice VOC Médio" sublabel="Qualidade aceitável" tone="default" />
+          <StatCard icon={<IconThermo className="h-5 w-5" />} value={formatReading(stats.avgTemp, "°C")} label="Temperatura Média" sublabel="Todos os hubs" tone="accent" />
+          <StatCard icon={<IconDroplet className="h-5 w-5" />} value={formatReading(stats.avgHumidity, "%")} label="Humidade Média" sublabel="Dentro do normal" tone="good" />
+          <StatCard icon={<IconBuilding className="h-5 w-5" />} value={formatReading(stats.avgVoc)} label="Índice VOC Médio" sublabel="Relativo ao local" tone="default" />
           <StatCard
             icon={<IconAlert className="h-5 w-5" />}
             value={stats.propertiesWithAlerts}

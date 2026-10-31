@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { ChartMetric, ConsentGrant, HistoryPoint, Property, SatelliteEvent, ViewerRole } from "@/lib/types";
 import { formatDateTime } from "@/lib/ui";
+import { formatReading, isAbove } from "@/lib/readings";
 import { idealRangeLabel } from "@/lib/seed";
 import { filterEventsForViewer, isCategoryVisible } from "@/lib/consent";
 import { AllMetricsChart, SingleMetricChart } from "./HistoryChart";
@@ -185,11 +186,11 @@ export function HistoryClient({
               {tableRows.map((p) => (
                 <tr key={p.timestamp} className="border-t border-border/60">
                   <td className="px-4 py-1.5 text-muted">{formatDateTime(p.timestamp)}</td>
-                  <td className={`px-4 py-1.5 text-right ${metric === "temperature" ? "font-semibold text-white" : ""}`}>{p.temperature}°C</td>
-                  <td className={`px-4 py-1.5 text-right ${metric === "humidity" ? "font-semibold text-white" : ""} ${p.humidity > 70 ? "text-warn" : ""}`}>
-                    {p.humidity}%
+                  <td className={`px-4 py-1.5 text-right ${metric === "temperature" ? "font-semibold text-white" : ""}`}>{formatReading(p.temperature, "°C")}</td>
+                  <td className={`px-4 py-1.5 text-right ${metric === "humidity" ? "font-semibold text-white" : ""} ${isAbove(p.humidity, 70) ? "text-warn" : ""}`}>
+                    {formatReading(p.humidity, "%")}
                   </td>
-                  <td className={`px-4 py-1.5 text-right ${metric === "voc" ? "font-semibold text-white" : ""} ${p.voc > 120 ? "text-warn" : ""}`}>{p.voc}</td>
+                  <td className={`px-4 py-1.5 text-right ${metric === "voc" ? "font-semibold text-white" : ""} ${isAbove(p.voc, 120) ? "text-warn" : ""}`}>{formatReading(p.voc)}</td>
                   {soundVisible && (
                     <td className={`px-4 py-1.5 text-right ${metric === "sound_dbfs" ? "font-semibold text-white" : ""}`}>{p.sound_dbfs ?? "—"}</td>
                   )}

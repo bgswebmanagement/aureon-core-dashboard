@@ -218,10 +218,10 @@ function buildAlerts(): Alert[] {
         id: `a${n++}`,
         propertyId: property.id,
         deviceLabel: hub.location,
-        title: "Qualidade do Ar Degradada",
-        message: `Qualidade do ar degradada (VOC ${hub.voc}), medida pelo hub em ${hub.location}.`,
+        title: "Nível de VOC Acima do Habitual",
+        message: `Nível de VOC acima do habitual (VOC ${hub.voc}), medido pelo hub em ${hub.location}.`,
         severity: hub.voc > VOC_CRITICAL ? "critico" : "aviso",
-        tag: "Qualidade do Ar",
+        tag: "Nível de VOC",
         createdAt: hoursAgoISO(6),
         active: true
       });
@@ -286,11 +286,11 @@ function buildInsights(): Insight[] {
         id: `i${n++}`,
         propertyId: property.id,
         deviceLabel: hub.location,
-        title: "Qualidade do Ar Comprometida",
-        message: `Índice VOC elevado (${hub.voc}) em ${hub.location}. Possíveis fontes: produtos de limpeza, tintas, mobiliário novo.`,
+        title: "Nível de VOC Acima do Habitual",
+        message: `Índice VOC elevado (${hub.voc}) em ${hub.location}, acima do habitual para este local. Possíveis fontes: produtos de limpeza, tintas, mobiliário novo.`,
         severity: hub.voc > VOC_CRITICAL ? "critico" : "aviso",
         recommendation: "Aumentar ventilação. Identificar e remover fontes de compostos orgânicos voláteis.",
-        tag: "Qualidade do Ar",
+        tag: "Nível de VOC",
         createdAt: hoursAgoISO(6)
       });
     }
@@ -319,7 +319,8 @@ export function idealRangeLabel(metric: Metric): string {
 // trending toward the Hub's current reading so the "last point" always
 // matches HUBS above.
 export function generateHistory(propertyId: string, days: number): HistoryPoint[] {
-  const hub = HUBS.find((h) => h.propertyId === propertyId);
+  // Raw demo hubs always have numeric readings (the public Hub type allows null).
+  const hub = RAW_HUBS.find((h) => h.propertyId === propertyId);
   if (!hub) return [];
   const rand = mulberry32(hashSeed(hub.id));
   const points: HistoryPoint[] = [];

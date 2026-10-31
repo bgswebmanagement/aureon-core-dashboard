@@ -16,7 +16,10 @@ export function computeBreachSegments(history: HistoryPoint[], metric: Metric, t
 
   for (const point of history) {
     const value = point[metric];
-    if (value > threshold) {
+    // A missing reading (null) is unknown, not a breach: it ends any open
+    // segment instead of being bridged, so the evidence never claims more
+    // than was actually measured.
+    if (value != null && value > threshold) {
       if (!current) {
         current = { start: point.timestamp, end: point.timestamp, hours: 1, peak: value };
       } else {

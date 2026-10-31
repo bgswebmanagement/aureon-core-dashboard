@@ -1,6 +1,7 @@
 import { ConsentGrant, Hub, ViewerRole } from "@/lib/types";
 import { isCategoryVisible } from "@/lib/consent";
 import { statusDot } from "@/lib/ui";
+import { formatReading, VOC_WARMING_UP_LABEL } from "@/lib/readings";
 import { IconLock } from "./icons";
 
 // Displays the single Hub installed at a property — one card per property,
@@ -30,15 +31,16 @@ export function HubCard({
       <div className="mt-3 grid grid-cols-4 gap-2 text-sm">
         <div>
           <div className="text-[11px] text-muted">TEMP</div>
-          <div className="font-semibold">{hub.temperature}°C</div>
+          <div className="font-semibold">{formatReading(hub.temperature, "°C")}</div>
         </div>
         <div>
           <div className="text-[11px] text-muted">HUM</div>
-          <div className="font-semibold">{hub.humidity}%</div>
+          <div className="font-semibold">{formatReading(hub.humidity, "%")}</div>
         </div>
         <div>
           <div className="text-[11px] text-muted">VOC</div>
-          <div className="font-semibold">{hub.voc}</div>
+          <div className="font-semibold">{formatReading(hub.voc)}</div>
+          {hub.voc == null && <div className="text-[10px] text-muted">{VOC_WARMING_UP_LABEL}</div>}
         </div>
         <div>
           <div className="text-[11px] text-muted">SOM</div>
