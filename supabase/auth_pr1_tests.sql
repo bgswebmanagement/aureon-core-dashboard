@@ -537,7 +537,7 @@ begin
   select count(*) into n_ev from rsn_events;
   select count(*) into n_cg from consent_grants where property_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
   select count(*) into n_a from properties where id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
-  select has_consent('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'motion') into ok;
+  select private.has_consent('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'motion') into ok;
   select count(*), count(*) filter (where property_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'), count(last_seen)
     into n_sat, n_sat_a, sb_seen from satellites_visible;
   select count(*) into n_al from alerts where property_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
@@ -771,9 +771,11 @@ end $$;
 
 -- ===== T30: depois do privilégio mínimo, continuam a ler a casa e a dar/retirar consentimento
 do $$
-declare np int; nh int; nv int; s numeric; nsat int; nev int; nal int; linhas int; ativo boolean; por_retirar uuid;
+declare np int; nh int; nv int; s numeric; nsat int; nev int; nal int; linhas int; ativo boolean; por_retirar uuid; v_id uuid;
 begin
-  -- (como administrador) não deixa consentimento de movimento ativo da casa A
+  -- (como administrador, sem identidade herdada de testes anteriores)
+  -- não deixa consentimento de movimento ativo da casa A
+  perform set_config('request.jwt.claims', '{}', true);
   update consent_grants set active = false
     where property_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' and category = 'motion' and active;
 
@@ -804,7 +806,8 @@ begin
   -- inquilino A1 dá consentimento; inquilino A2 retira
   perform set_config('request.jwt.claims', '{"sub":"22222222-2222-2222-2222-222222222222","role":"authenticated"}', true);
   set local role authenticated;
-  insert into consent_grants (property_id, category) values ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'motion');
+  insert into consent_grants (property_id, category) values ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'motion')
+    returning id into v_id;
   reset role;
   perform set_config('request.jwt.claims', '{"sub":"33333333-3333-3333-3333-333333333333","role":"authenticated"}', true);
   set local role authenticated;
@@ -813,14 +816,77 @@ begin
   get diagnostics linhas = row_count;
   reset role;
   select active, revoked_by into ativo, por_retirar from consent_grants
-    where property_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' and category = 'motion'
-    order by granted_at desc, id desc limit 1;
+    where id = v_id;
   if linhas <> 1 or ativo or por_retirar is distinct from '33333333-3333-3333-3333-333333333333' then
     raise exception 'dar/retirar consentimento falhou (linhas=%, ativo=%, retirou=%)', linhas, ativo, por_retirar;
   end if;
   insert into teste_resultados (teste, resultado) values ('T30 continuam a ler a sua casa e a dar/retirar consentimento', 'OK');
 exception when others then
   insert into teste_resultados (teste, resultado) values ('T30 continuam a ler a sua casa e a dar/retirar consentimento', 'FALHOU: ' || sqlerrm);
+end $$;
+
+-- ===== T31: as 6 funções estão em "private", fechadas a anon, e só authenticated as executa
+--           (exige auth_pr1c_private_schema.sql aplicado) =====================
+do $$
+declare erros text := ''; f text; n int;
+        sigs constant text[] := array['is_admin()', 'my_role()', 'is_member(uuid)', 'has_consent(uuid,text)',
+                                      'can_see_satellite_activity(uuid,text[])', 'can_see_alert_satellite(uuid)'];
+begin
+  select count(*) into n from pg_proc
+    where pronamespace = 'public'::regnamespace
+      and proname in ('is_admin','my_role','is_member','has_consent','can_see_satellite_activity','can_see_alert_satellite');
+  if n <> 0 then erros := erros || format(' %s ainda em public;', n); end if;
+  foreach f in array sigs loop
+    if to_regprocedure('private.' || f) is null then erros := erros || ' falta private.' || f || ';'; end if;
+    if to_regprocedure('public.' || f) is not null then erros := erros || ' ainda existe public.' || f || ';'; end if;
+    if has_function_privilege('anon', 'private.' || f, 'EXECUTE') then erros := erros || ' anon executa ' || f || ';'; end if;
+    if not has_function_privilege('authenticated', 'private.' || f, 'EXECUTE') then erros := erros || ' authenticated não executa ' || f || ';'; end if;
+  end loop;
+  if has_schema_privilege('anon', 'private', 'USAGE') then erros := erros || ' anon tem USAGE em private;'; end if;
+  if not has_schema_privilege('authenticated', 'private', 'USAGE') then erros := erros || ' authenticated sem USAGE em private;'; end if;
+  if has_schema_privilege('authenticated', 'private', 'CREATE') or has_schema_privilege('anon', 'private', 'CREATE') then
+    erros := erros || ' alguém pode criar objetos em private;';
+  end if;
+  if erros <> '' then raise exception '%', erros; end if;
+  insert into teste_resultados (teste, resultado) values ('T31 as 6 funções estão em private (fechado a anon, aberto a authenticated, sem CREATE)', 'OK');
+exception when others then
+  insert into teste_resultados (teste, resultado) values ('T31 as 6 funções estão em private (fechado a anon, aberto a authenticated, sem CREATE)', 'FALHOU: ' || sqlerrm);
+end $$;
+
+-- ===== T32: regras e vistas apontam para as funções em private ===============
+do $$
+declare n_pol int; v1 text; v2 text;
+begin
+  select count(*) into n_pol from pg_policies
+    where schemaname = 'public'
+      and (coalesce(qual, '') like '%private.%' or coalesce(with_check, '') like '%private.%');
+  v1 := pg_get_viewdef('public.sensor_readings_visible'::regclass);
+  v2 := pg_get_viewdef('public.satellites_visible'::regclass);
+  if n_pol < 8 then raise exception 'só % regras referem private.* (esperado 8 ou mais)', n_pol; end if;
+  if v1 not like '%private.%' or v2 not like '%private.%' then raise exception 'as vistas não referem private.*'; end if;
+  insert into teste_resultados (teste, resultado) values ('T32 ' || n_pol || ' regras e as 2 vistas apontam para private.*', 'OK');
+exception when others then
+  insert into teste_resultados (teste, resultado) values ('T32 regras e vistas apontam para private.*', 'FALHOU: ' || sqlerrm);
+end $$;
+
+-- ===== T33: chamadas diretas pelo utilizador continuam a dar o resultado certo
+do $$
+declare r text; m boolean; m_outra boolean; c boolean; adm boolean;
+begin
+  perform set_config('request.jwt.claims', '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}', true);
+  set local role authenticated;
+  select private.my_role(), private.is_member('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'),
+         private.is_member('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'),
+         private.has_consent('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'sound'),
+         private.is_admin()
+    into r, m, m_outra, c, adm;
+  reset role;
+  if r is distinct from 'owner' or m is not true or m_outra is not false or c is not false or adm is not false then
+    raise exception 'my_role=%, membro A=%, membro B=%, consent B=%, admin=%', r, m, m_outra, c, adm;
+  end if;
+  insert into teste_resultados (teste, resultado) values ('T33 funções em private chamadas pelo dono A: papel owner, membro só da casa A, sem admin', 'OK');
+exception when others then
+  insert into teste_resultados (teste, resultado) values ('T33 funções em private chamadas pelo dono A: papel owner, membro só da casa A, sem admin', 'FALHOU: ' || sqlerrm);
 end $$;
 
 select teste, resultado from teste_resultados order by id;
