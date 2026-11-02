@@ -1,0 +1,7 @@
+<!-- Supabase > Authentication > Email Templates > "Invite user"  (usado a partir do PR 3)
+     Assunto: Foi convidado para a Aureon Core
+     {{ .RedirectTo }} vem do convite feito pela página /admin (…/auth/confirm). -->
+<h2>Foi convidado para a Aureon Core</h2>
+<p>Alguém da Aureon Core criou-lhe uma conta. Clique no botão para ativar o acesso. O link só funciona uma vez e expira em 1 hora.</p>
+<p><a href="{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=invite">Ativar o meu acesso</a></p>
+<p>Se não estava à espera deste convite, ignore este email.</p>

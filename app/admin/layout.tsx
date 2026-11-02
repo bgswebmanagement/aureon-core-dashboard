@@ -1,6 +1,7 @@
 import { Sidebar } from "@/components/Sidebar";
 import { adminNav } from "@/lib/nav";
 import { getAlerts } from "@/lib/data";
+import { getCurrentAccount } from "@/lib/auth/session";
 
 // Force this whole route segment (and every page under /admin) to render on
 // every request instead of being cached as static HTML at build time — once
@@ -18,10 +19,11 @@ export const dynamic = "force-dynamic";
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const alerts = await getAlerts();
   const activeCount = alerts.filter((a) => a.active).length;
+  const account = await getCurrentAccount();
 
   return (
     <div className="flex">
-      <Sidebar base="/admin" role="Aureon Core" items={adminNav("/admin")} alertCount={activeCount} />
+      <Sidebar base="/admin" role="Aureon Core" items={adminNav("/admin")} alertCount={activeCount} account={account} />
       <div className="min-h-screen flex-1">{children}</div>
     </div>
   );

@@ -126,6 +126,28 @@ a GitHub repo from the Vercel dashboard.
    row per RSN unit (its `device_id` must match the `node_id` the Hub relays).
 5. Redeploy. The app automatically switches from seed data to Supabase — no code changes.
 
+## Login (Supabase Auth, link por email)
+
+Sem palavra-passe: `/login` envia um link por email; `/auth/confirm` mostra o botão "Entrar" (abrir o
+link não gasta o código); `/auth/entrar` verifica o código e leva cada pessoa à página do seu papel
+(`profiles.role`: `admin` → `/admin`, `owner` → `/proprietario`, `tenant` → `/inquilino`); `/auth/sair`
+termina a sessão. Só entra quem já existe em Supabase (`shouldCreateUser: false`).
+
+Nesta fase **nada fica protegido**: o login só cria a sessão. O middleware apenas renova o cookie e não
+corre em `/api/*` (o `/api/ingest` do firmware não é tocado).
+
+Configuração necessária:
+
+1. Vercel: `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY` em Production **e** Preview.
+   Sem elas o login fica desligado (modo demonstração).
+2. Supabase → Authentication:
+   - Sign In / Providers → Email: desligar "Allow new users to sign up".
+   - URL Configuration: Site URL e Redirect URLs (produção, previews da Vercel, `http://localhost:3000/**`).
+   - Email Templates: colar `supabase/email_templates/magic_link.html` (e `invite_user.html` a partir do PR 3).
+   - SMTP próprio (o envio por defeito do Supabase é muito limitado).
+3. Criar o primeiro administrador: Authentication → Users → Add user, e depois inserir a linha em
+   `profiles` com `role = 'admin'`.
+
 ## API contract for Count Customs
 
 Send this section to Chirantan once you have a deployed URL:
