@@ -38,6 +38,9 @@ export default function LandingPage() {
         <div>
           <h2 className="text-xl font-semibold">Entrar no Dashboard</h2>
           <p className="mt-1 text-sm text-muted">Selecione o seu perfil para aceder ao painel de controlo.</p>
+          <Link href="/login" className="mt-3 inline-block text-sm text-accent hover:underline">
+            Já tem conta? Entrar com o seu email →
+          </Link>
 
           <div className="mt-6 space-y-3">
             <Link

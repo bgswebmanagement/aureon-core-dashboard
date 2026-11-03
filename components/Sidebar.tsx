@@ -10,12 +10,15 @@ export function Sidebar({
   base,
   role,
   items,
-  alertCount
+  alertCount,
+  account
 }: {
   base: string;
   role: "Proprietário" | "Inquilino" | "Aureon Core";
   items: NavItem[];
   alertCount: number;
+  // Só existe com sessão iniciada; sem ela a barra lateral fica como estava.
+  account?: { email: string | null } | null;
 }) {
   const pathname = usePathname();
 
@@ -60,6 +63,21 @@ export function Sidebar({
       </nav>
 
       <div className="border-t border-border p-3">
+        {account && (
+          <div className="mb-3 rounded-xl border border-border bg-panel2 p-3 text-xs">
+            <div className="truncate text-muted" title={account.email ?? undefined}>
+              {account.email ?? "Sessão iniciada"}
+            </div>
+            <form method="post" action="/auth/sair" className="mt-2">
+              <button
+                type="submit"
+                className="w-full rounded-lg border border-border px-3 py-1.5 text-xs text-muted hover:border-crit/40 hover:text-crit"
+              >
+                Sair
+              </button>
+            </form>
+          </div>
+        )}
         <div className="rounded-xl border border-border bg-panel2 p-3">
           <div className="flex items-center justify-between text-xs">
             <span className="font-medium">Hub Local</span>

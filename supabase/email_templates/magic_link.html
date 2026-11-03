@@ -1,0 +1,8 @@
+<!-- Supabase > Authentication > Email Templates > "Magic Link"
+     Assunto: O seu link de acesso à Aureon Core
+     {{ .RedirectTo }} é o endereço de onde o pedido foi feito + /auth/confirm
+     (produção, preview ou futuros .pt/.ch), desde que esteja nos Redirect URLs. -->
+<h2>Aceder à Aureon Core</h2>
+<p>Clique no botão para entrar. O link só funciona uma vez e expira em 1 hora.</p>
+<p><a href="{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=email">Abrir a Aureon Core</a></p>
+<p>Se não pediu este acesso, ignore este email.</p>
