@@ -32,7 +32,22 @@ export function createRouteClient(request: NextRequest) {
 }
 
 // Os formulários POST (entrar/sair) só são aceites se vierem do próprio site.
+//
+// 1) Sec-Fetch-Site (enviado pelos browsers e que uma página de outro site não
+//    consegue falsificar): se existir, só "same-origin" (ou "none", navegação
+//    iniciada pelo próprio utilizador) é aceite; tudo o resto é recusado.
+//    É isto que permite manter `referrer: "no-referrer"` em /auth/confirm (que
+//    protege o código do link): com essa política o browser envia
+//    "Origin: null" nos formulários, mas continua a enviar Sec-Fetch-Site:
+//    same-origin.
+// 2) Sem Sec-Fetch-Site (clientes antigos, curl): compara o Origin com o host.
+//    "Origin: null" falha aqui (não é um endereço), por isso só é aceite quando
+//    o Sec-Fetch-Site confirma same-origin. Sem Origin também, aceita-se (não é
+//    um pedido de browser entre sites).
 export function isSameOrigin(request: NextRequest): boolean {
+  const fetchSite = request.headers.get("sec-fetch-site");
+  if (fetchSite !== null) return fetchSite === "same-origin" || fetchSite === "none";
+
   const origin = request.headers.get("origin");
   if (!origin) return true;
   const host = request.headers.get("x-forwarded-host") ?? request.headers.get("host");

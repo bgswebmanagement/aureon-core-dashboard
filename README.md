@@ -148,6 +148,11 @@ Configuração necessária:
 3. Criar o primeiro administrador: Authentication → Users → Add user, e depois inserir a linha em
    `profiles` com `role = 'admin'`.
 
+Testes do login (browser real + pedidos manuais, contra o site compilado e um Supabase de mentira, sem
+tocar na base de dados): `npm run test:e2e`. Usa o Chrome instalado (`PW_CHANNEL=msedge` para o Edge).
+Cobrem a verificação de origem de `/auth/entrar` e `/auth/sair`, incluindo `Origin: null` (que os
+browsers enviam quando a página tem `referrer: no-referrer`) e pedidos de outros sites.
+
 ## API contract for Count Customs
 
 Send this section to Chirantan once you have a deployed URL:
