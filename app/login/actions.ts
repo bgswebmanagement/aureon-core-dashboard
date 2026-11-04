@@ -1,24 +1,11 @@
 "use server";
 
-import { headers } from "next/headers";
+import { currentOrigin } from "@/lib/auth/origin";
 import { createSessionClient } from "@/lib/auth/server-client";
 
 export type LoginState = { status: "idle" | "sent" | "error"; message?: string };
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const HOST_RE = /^[a-z0-9.-]+(:\d{1,5})?$/i;
-
-// Endereço do site de onde o pedido veio (produção, preview, .pt/.ch no
-// futuro). O Supabase só o aceita se estiver na lista de Redirect URLs; se
-// não estiver, usa o Site URL.
-function currentOrigin(): string | null {
-  const h = headers();
-  const host = h.get("x-forwarded-host") ?? h.get("host");
-  if (!host || !HOST_RE.test(host)) return null;
-  const local = host.startsWith("localhost") || host.startsWith("127.0.0.1");
-  const proto = local ? "http" : (h.get("x-forwarded-proto") ?? "https").split(",")[0].trim();
-  return `${proto}://${host}`;
-}
 
 // Pede o link de acesso. Só entra quem já foi convidado (shouldCreateUser:
 // false). A resposta é SEMPRE a mesma, exista o email ou não, para não

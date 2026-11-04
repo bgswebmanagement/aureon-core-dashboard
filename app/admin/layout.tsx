@@ -2,6 +2,7 @@ import { Sidebar } from "@/components/Sidebar";
 import { adminNav } from "@/lib/nav";
 import { getAlerts } from "@/lib/data";
 import { getCurrentAccount } from "@/lib/auth/session";
+import { requireAdminPage } from "@/lib/admin/guard";
 
 // Force this whole route segment (and every page under /admin) to render on
 // every request instead of being cached as static HTML at build time — once
@@ -17,6 +18,10 @@ export const dynamic = "force-dynamic";
 // role): nothing here is restricted by tenant consent the way the owner
 // dashboard is.
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
+  // Só administradores. Cada página de /admin repete esta verificação: o layout
+  // não volta a correr quando se navega entre páginas no browser.
+  await requireAdminPage();
+
   const alerts = await getAlerts();
   const activeCount = alerts.filter((a) => a.active).length;
   const account = await getCurrentAccount();

@@ -45,6 +45,7 @@ export function adminNav(base: string): NavItem[] {
     { href: `${base}/dispositivos`, label: "Dispositivos", icon: "building" },
     { href: `${base}/propriedades`, label: "Propriedades", icon: "building" },
     { href: `${base}/alertas`, label: "Alertas", icon: "alert" },
-    { href: `${base}/consentimentos`, label: "Consentimentos", icon: "lock" }
+    { href: `${base}/consentimentos`, label: "Consentimentos", icon: "lock" },
+    { href: `${base}/utilizadores`, label: "Utilizadores", icon: "users" }
   ];
 }
