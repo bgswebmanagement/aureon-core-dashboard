@@ -1,4 +1,5 @@
 import { TopBar } from "@/components/TopBar";
+import { requireAdminPage } from "@/lib/admin/guard";
 import { StatCard } from "@/components/StatCard";
 import { IconLock, IconUnlock } from "@/components/icons";
 import { formatDateTime } from "@/lib/ui";
@@ -16,6 +17,7 @@ const CATEGORY_LABEL: Record<RestrictedCategory, string> = {
 // tenant-controlled (see app/inquilino/privacidade), staff can only see the
 // current state, not grant/revoke on a tenant's behalf.
 export default async function AdminConsentsPage() {
+  await requireAdminPage();
   const [grants, properties, alerts] = await Promise.all([getConsentGrants(), getProperties(), getAlerts()]);
   const active = grants.filter((g) => g.active);
 

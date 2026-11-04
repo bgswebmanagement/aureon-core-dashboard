@@ -1,10 +1,12 @@
 import { TopBar } from "@/components/TopBar";
+import { requireAdminPage } from "@/lib/admin/guard";
 import { AlertCard } from "@/components/AlertCard";
 import { StatCard } from "@/components/StatCard";
 import { IconAlert } from "@/components/icons";
 import { getAlerts, getProperties } from "@/lib/data";
 
 export default async function AdminAlertsPage() {
+  await requireAdminPage();
   const [alerts, properties] = await Promise.all([getAlerts(), getProperties()]);
   const active = alerts.filter((a) => a.active);
   const criticos = active.filter((a) => a.severity === "critico").length;

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { requireAdminPage } from "@/lib/admin/guard";
 import { TopBar } from "@/components/TopBar";
 import { StatCard } from "@/components/StatCard";
 import { PropertyCard } from "@/components/PropertyCard";
@@ -8,6 +9,7 @@ import { formatReading } from "@/lib/readings";
 import { getAlerts, getFleetHealth, getHub, getOverviewStats, getProperties, getSatellites, getTenantByProperty } from "@/lib/data";
 
 export default async function AdminOverview() {
+  await requireAdminPage();
   const [stats, fleet, properties, alerts] = await Promise.all([
     getOverviewStats(),
     getFleetHealth(),
