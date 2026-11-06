@@ -39,6 +39,53 @@ export default async function LoginPage({ searchParams }: { searchParams: { erro
           <LoginForm />
         </div>
 
+        {/* Só para administradores. Formulário normal (POST), sem JavaScript: a palavra-passe
+            nunca vai para o endereço. Abre sozinho depois de uma tentativa falhada. */}
+        <details id="admin-login-tab" open={searchParams.erro === "senha"} className="mt-8 border-t border-border pt-6">
+          <summary className="cursor-pointer text-sm font-medium">Administrador</summary>
+          <form method="post" action="/auth/palavra-passe" className="mt-4 space-y-3">
+            <p className="text-xs text-muted">Acesso com email e palavra-passe, só para administradores.</p>
+            {searchParams.erro === "senha" && (
+              <p role="alert" className="rounded-lg border border-crit/30 bg-crit/10 p-3 text-sm text-crit">
+                Email ou palavra-passe incorretos.
+              </p>
+            )}
+            <div>
+              <label htmlFor="admin-email" className="text-sm text-muted">
+                Email
+              </label>
+              <input
+                id="admin-email"
+                name="email"
+                type="email"
+                required
+                autoComplete="username"
+                inputMode="email"
+                className="mt-1 w-full rounded-lg border border-border bg-panel2 px-3 py-2 text-sm text-white focus:border-accent/50 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label htmlFor="admin-password" className="text-sm text-muted">
+                Palavra-passe
+              </label>
+              <input
+                id="admin-password"
+                name="password"
+                type="password"
+                required
+                autoComplete="current-password"
+                className="mt-1 w-full rounded-lg border border-border bg-panel2 px-3 py-2 text-sm text-white focus:border-accent/50 focus:outline-none"
+              />
+            </div>
+            <button
+              type="submit"
+              className="w-full rounded-lg border border-accent/40 bg-accent/10 px-3 py-2 text-sm font-medium text-accent hover:bg-accent/20"
+            >
+              Entrar
+            </button>
+          </form>
+        </details>
+
         <Link href="/" className="mt-8 inline-block text-xs text-muted hover:text-white">
           ← Voltar à página inicial
         </Link>
