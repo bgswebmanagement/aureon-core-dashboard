@@ -10,6 +10,17 @@ import { randomUUID } from "node:crypto";
 const PORT = Number(process.env.FAKE_SUPABASE_PORT ?? 54329);
 export const SERVICE_KEY = "service-key-falsa";
 
+// Palavras-passe de TESTE para o login do administrador: geradas ao acaso em
+// cada corrida e entregues aos testes por /__credentials (nunca escritas no código).
+const PASSWORD = { admin: randomUUID(), owner: randomUUID(), tenant: randomUUID(), norole: randomUUID(), banned: randomUUID() };
+const CREDENTIALS = [
+  { key: "admin", email: "admin@teste.invalid", token: "tok-admin" },
+  { key: "owner", email: "dono@teste.invalid", token: "tok-owner" },
+  { key: "tenant", email: "inquilino@teste.invalid", token: "tok-tenant" },
+  { key: "norole", email: "semperfil@teste.invalid", token: "tok-norole" },
+  { key: "banned", email: "admin-desativado@teste.invalid", token: "tok-banned" }
+];
+
 const P1 = "11111111-1111-4111-8111-111111111111";
 const P2 = "22222222-2222-4222-8222-222222222222";
 
@@ -19,7 +30,9 @@ function initialState() {
     { id: "b0000000-0000-4000-8000-000000000002", email: "dono@teste.invalid", confirmed: true },
     { id: "c0000000-0000-4000-8000-000000000003", email: "inquilino@teste.invalid", confirmed: true },
     { id: "d0000000-0000-4000-8000-000000000004", email: "semperfil@teste.invalid", confirmed: true },
-    { id: "e0000000-0000-4000-8000-000000000005", email: "pendente@teste.invalid", confirmed: false }
+    { id: "e0000000-0000-4000-8000-000000000005", email: "pendente@teste.invalid", confirmed: false },
+    // administrador com o acesso desativado (banido)
+    { id: "f0000000-0000-4000-8000-000000000006", email: "admin-desativado@teste.invalid", confirmed: true, banned: "2999-01-01T00:00:00Z" }
   ];
   return {
     users,
@@ -28,7 +41,8 @@ function initialState() {
         { id: users[0].id, role: "admin" },
         { id: users[1].id, role: "owner" },
         { id: users[2].id, role: "tenant" },
-        { id: users[4].id, role: "owner" }
+        { id: users[4].id, role: "owner" },
+        { id: users[5].id, role: "admin" }
       ],
       property_members: [{ user_id: users[1].id, property_id: P1 }],
       properties: [
@@ -106,8 +120,32 @@ const server = http.createServer(async (req, res) => {
     return send(res, 200, { ok: true });
   }
   if (path === "/__log") return send(res, 200, state.log);
+  if (path === "/__credentials") {
+    return send(res, 200, Object.fromEntries(CREDENTIALS.map((c) => [c.key, { email: c.email, password: PASSWORD[c.key] }])));
+  }
 
-  state.log.push({ method: req.method, path, query: url.search, service, token: bearer, body });
+  // O registo nunca guarda palavras-passe.
+  const loggedBody = body && typeof body === "object" && "password" in body ? { ...body, password: "[redigida]" } : body;
+  state.log.push({ method: req.method, path, query: url.search, service, token: bearer, body: loggedBody });
+
+  // ----- Auth: entrada com email + palavra-passe ----------------------------
+  if (path === "/auth/v1/token" && req.method === "POST" && url.searchParams.get("grant_type") === "password") {
+    const email = String(body?.email ?? "").toLowerCase();
+    const credential = CREDENTIALS.find((c) => c.email === email);
+    const user = state.users.find((u) => u.email === email);
+    if (!credential || !user || body?.password !== PASSWORD[credential.key]) {
+      return send(res, 400, { code: 400, error_code: "invalid_credentials", msg: "Invalid login credentials" });
+    }
+    if (user.banned) return send(res, 400, { code: 400, error_code: "user_banned", msg: "User is banned" });
+    return send(res, 200, {
+      access_token: credential.token,
+      token_type: "bearer",
+      expires_in: 3600,
+      expires_at: Math.floor(Date.now() / 1000) + 3600,
+      refresh_token: `ref-${credential.key}`,
+      user: userJson(user)
+    });
+  }
 
   // ----- Auth: sessão ------------------------------------------------------
   if (path === "/auth/v1/user" && req.method === "GET") {

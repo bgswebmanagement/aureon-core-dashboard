@@ -133,8 +133,16 @@ link não gasta o código); `/auth/entrar` verifica o código e leva cada pessoa
 (`profiles.role`: `admin` → `/admin`, `owner` → `/proprietario`, `tenant` → `/inquilino`); `/auth/sair`
 termina a sessão. Só entra quem já existe em Supabase (`shouldCreateUser: false`).
 
-Nesta fase **nada fica protegido**: o login só cria a sessão. O middleware apenas renova o cookie e não
-corre em `/api/*` (o `/api/ingest` do firmware não é tocado).
+**Administrador com palavra-passe:** em `/login`, o separador «Administrador» (email + palavra-passe, só POST
+para `/auth/palavra-passe`) existe só para contas com `profiles.role = 'admin'`. Qualquer falha (email que não
+existe, palavra-passe errada, conta desativada, conta que não é de administrador) dá a mesma mensagem, «Email ou
+palavra-passe incorretos.»; uma conta que não seja de administrador nunca recebe cookie de sessão. Donos e
+inquilinos continuam a entrar só por link no email. A palavra-passe define-se no Supabase (Authentication →
+Users); nunca vai para o código, para a URL nem para os registos.
+
+Só `/admin` exige login (de administrador); as páginas de dono e inquilino e `/report/[id]` continuam abertas até
+aos próximos passos. O middleware apenas renova o cookie e não corre em `/api/*` (o `/api/ingest` do firmware
+não é tocado).
 
 Configuração necessária:
 
