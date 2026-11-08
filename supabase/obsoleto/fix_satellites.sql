@@ -1,3 +1,17 @@
+-- ===========================================================================
+-- OBSOLETO — NÃO CORRER. Mantido só como histórico do arranque do piloto.
+--
+-- Este script APAGA a tabela "satellites" (drop table … cascade) com todos os
+-- dados dela, e apaga também as vistas que dependem dela (satellites_visible).
+-- Depois recria a tabela com a regra antiga "scoped satellites" (baseada em
+-- owner_id) e sem as restrições de leitura/escrita atuais, o que volta a abrir
+-- a leitura direta da tabela.
+--
+-- Foi escrito antes das contas e das regras de privacidade
+-- (supabase/auth_pr1_*.sql). Correr hoje destruiria os satélites reais
+-- (AC-RSN-0001 e AC-RSN-0002) e desfaria a proteção do consentimento.
+-- ===========================================================================
+
 -- ---------------------------------------------------------------------------
 -- Aureon Core — corrigir/recriar a tabela satellites do zero e criar os
 -- satélites do primeiro hub (já existente).
