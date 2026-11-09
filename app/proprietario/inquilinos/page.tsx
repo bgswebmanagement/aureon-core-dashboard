@@ -2,17 +2,18 @@ import Link from "next/link";
 import { TopBar } from "@/components/TopBar";
 import { statusColor, statusLabel } from "@/lib/ui";
 import { IconAlert } from "@/components/icons";
-import { getAlerts, getProperties, getSatellites, getTenants } from "@/lib/data";
+import { requireOwnerScope } from "@/lib/owner/scope";
 
 export default async function TenantsPage() {
-  const [tenants, properties, alerts] = await Promise.all([getTenants(), getProperties(), getAlerts()]);
+  const { data } = await requireOwnerScope();
+  const [tenants, properties, alerts] = await Promise.all([data.getTenants(), data.getProperties(), data.getAlerts()]);
   const activeAlerts = alerts.filter((a) => a.active);
 
   const rows = await Promise.all(
     tenants.map(async (tenant) => {
       const property = properties.find((p) => p.id === tenant.propertyId);
       if (!property) return null;
-      const satellites = await getSatellites(property.id);
+      const satellites = await data.getSatellites(property.id);
       const tenantAlerts = activeAlerts.filter((a) => a.propertyId === property.id);
       return { tenant, property, satelliteCount: satellites.length, tenantAlerts };
     })

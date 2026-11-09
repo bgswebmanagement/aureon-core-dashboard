@@ -2,10 +2,11 @@ import { TopBar } from "@/components/TopBar";
 import { AlertCard } from "@/components/AlertCard";
 import { StatCard } from "@/components/StatCard";
 import { IconAlert } from "@/components/icons";
-import { getAlerts, getProperties } from "@/lib/data";
+import { requireOwnerScope } from "@/lib/owner/scope";
 
 export default async function AlertsPage() {
-  const [alerts, properties] = await Promise.all([getAlerts(), getProperties()]);
+  const { data } = await requireOwnerScope();
+  const [alerts, properties] = await Promise.all([data.getAlerts(), data.getProperties()]);
   const active = alerts.filter((a) => a.active);
   const criticos = active.filter((a) => a.severity === "critico").length;
   const avisos = active.filter((a) => a.severity === "aviso").length;

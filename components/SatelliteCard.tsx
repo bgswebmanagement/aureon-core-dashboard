@@ -1,6 +1,5 @@
 import { ConsentGrant, RestrictedCategory, Satellite, ViewerRole } from "@/lib/types";
 import { relativeTime } from "@/lib/ui";
-import { FIXED_NOW } from "@/lib/seed";
 import { IconDoor, IconDroplet, IconLock, IconMotion } from "./icons";
 
 const RESTRICTED: RestrictedCategory[] = ["motion", "doorWindow"];
@@ -33,6 +32,10 @@ export function SatelliteCard({
     viewerRole === "owner" &&
     satellite.capabilities.some((c) => RESTRICTED.includes(c as RestrictedCategory) && !isVisible(c as RestrictedCategory));
 
+  // Sem autorização do inquilino a base de dados já entrega a bateria
+  // arredondada à dezena; o «~» avisa que é aproximada.
+  const approxBattery = hasHiddenCategory;
+
   return (
     <div className={`rounded-xl border p-4 ${hasLeakAlert ? "border-crit/40 bg-crit/10" : "border-border bg-panel"}`}>
       <div className="flex items-center justify-between">
@@ -40,7 +43,10 @@ export function SatelliteCard({
           <span className={`h-2 w-2 rounded-full ${hasLeakAlert ? "bg-crit" : "bg-good"}`} />
           <span className="font-medium">{satellite.label}</span>
         </div>
-        <span className="text-xs text-muted">{satellite.battery}% bat.</span>
+        <span className="text-xs text-muted" title={approxBattery ? "Valor aproximado até o inquilino autorizar" : undefined}>
+          {approxBattery ? "~" : ""}
+          {satellite.battery}% bat.
+        </span>
       </div>
 
       <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5 text-xs text-muted">
@@ -78,7 +84,7 @@ export function SatelliteCard({
             <IconLock className="h-3 w-3" /> Requer autorização do inquilino para ver detalhes
           </span>
         ) : (
-          <>Último evento: {relativeTime(satellite.lastEventAt, FIXED_NOW)}</>
+          <>Último evento: {satellite.lastEventAt ? relativeTime(satellite.lastEventAt, new Date()) : "—"}</>
         )}
       </div>
     </div>

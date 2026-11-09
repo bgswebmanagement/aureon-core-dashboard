@@ -92,7 +92,7 @@ async function loadSnapshot(scope: DataScope): Promise<Snapshot | null> {
       events: events.data ?? [],
       consents: consents.data ?? []
     };
-    return buildSnapshot(raw, new Date());
+    return buildSnapshot(raw, new Date(), { activityMayBeHidden: scope.kind === "session" });
   } catch (err) {
     if (scope.allowDemoFallback) {
       console.error("[data] failed to read live Supabase snapshot, falling back to demo data:", err);

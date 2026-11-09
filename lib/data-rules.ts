@@ -128,7 +128,15 @@ export type Snapshot = {
 // Constrói tudo o que a app mostra a partir das linhas em bruto.
 // `now` entra como parâmetro (em vez de ler o relógio aqui dentro) para o
 // resultado depender só do que se passa.
-export function buildSnapshot(raw: RawRows, now: Date): Snapshot {
+export type BuildOptions = {
+  // true quando as linhas vêm de uma vista que pode esconder a atividade dos
+  // satélites (dono sem consentimento): então «sem last_seen» quer dizer
+  // «não sei» (null), e não «nunca reportou».
+  activityMayBeHidden?: boolean;
+};
+
+export function buildSnapshot(raw: RawRows, now: Date, options: BuildOptions = {}): Snapshot {
+  const hidden = options.activityMayBeHidden === true;
   // Última leitura por hub (linhas já da mais nova para a mais antiga).
   const latestReadingByHub = new Map<string, RawRows["readings"][number]>();
   for (const r of raw.readings) {
@@ -150,8 +158,14 @@ export function buildSnapshot(raw: RawRows, now: Date): Snapshot {
 
   // Último evento por satélite (linhas já da mais nova para a mais antiga).
   const latestEventByNode = new Map<string, { event: string; recorded_at: string }>();
+  // Última FUGA por satélite. Só os eventos leak_detected contam para o alerta
+  // de fuga: o firmware nunca envia «fuga resolvida», por isso o alerta fica
+  // ativo até alguém o limpar (a fazer) — um evento de movimento ou de porta
+  // depois da fuga NÃO a apaga.
+  const latestLeakByNode = new Map<string, string>();
   for (const e of raw.events) {
     if (!latestEventByNode.has(e.node_id)) latestEventByNode.set(e.node_id, e);
+    if (e.event === "leak_detected" && !latestLeakByNode.has(e.node_id)) latestLeakByNode.set(e.node_id, e.recorded_at);
   }
 
   // O modelo da app assume UM hub por casa, mas nada na base de dados o
@@ -213,7 +227,7 @@ export function buildSnapshot(raw: RawRows, now: Date): Snapshot {
     const latestEvent = latestEventByNode.get(s.device_id);
     const capabilities = (s.capabilities ?? []) as SatelliteCapability[];
     const leakState: "normal" | "alert" =
-      capabilities.includes("leak") && latestEvent?.event === "leak_detected" ? "alert" : "normal";
+      capabilities.includes("leak") && latestLeakByNode.has(s.device_id) ? "alert" : "normal";
     let doorWindowState: "Aberto" | "Fechado" | null = null;
     if (capabilities.includes("doorWindow")) {
       if (latestEvent?.event === "door_open") doorWindowState = "Aberto";
@@ -228,8 +242,8 @@ export function buildSnapshot(raw: RawRows, now: Date): Snapshot {
       leakState,
       doorWindowState,
       battery: s.battery ?? 100,
-      online: mins !== null && mins <= SATELLITE_ONLINE_HOURS * 60,
-      lastEventAt: latestEvent?.recorded_at ?? s.last_seen ?? new Date(0).toISOString()
+      online: mins !== null ? mins <= SATELLITE_ONLINE_HOURS * 60 : hidden ? null : false,
+      lastEventAt: latestEvent?.recorded_at ?? s.last_seen ?? (hidden ? null : new Date(0).toISOString())
     };
   });
   const satellitesByProperty = new Map<string, Satellite[]>();
@@ -295,7 +309,7 @@ export function buildSnapshot(raw: RawRows, now: Date): Snapshot {
           message: `Fuga de água detetada pelo satélite "${sat.label}" — ${property.name}. Fechar torneira principal e verificar tubagens.`,
           severity: "critico",
           tag: "Fuga de Água",
-          createdAt: sat.lastEventAt,
+          createdAt: latestLeakByNode.get(sat.id) ?? now.toISOString(),
           active: true
         });
       }

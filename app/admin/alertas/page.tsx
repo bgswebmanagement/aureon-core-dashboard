@@ -3,11 +3,12 @@ import { requireAdminPage } from "@/lib/admin/guard";
 import { AlertCard } from "@/components/AlertCard";
 import { StatCard } from "@/components/StatCard";
 import { IconAlert } from "@/components/icons";
-import { getAlerts, getProperties } from "@/lib/data";
+import { getAdminReader } from "@/lib/admin/reader";
 
 export default async function AdminAlertsPage() {
   await requireAdminPage();
-  const [alerts, properties] = await Promise.all([getAlerts(), getProperties()]);
+  const data = await getAdminReader();
+  const [alerts, properties] = await Promise.all([data.getAlerts(), data.getProperties()]);
   const active = alerts.filter((a) => a.active);
   const criticos = active.filter((a) => a.severity === "critico").length;
   const avisos = active.filter((a) => a.severity === "aviso").length;

@@ -128,6 +128,63 @@ test("fuga: o último evento do satélite ser leak_detected dá alerta crítico 
   expect(alert).toMatchObject({ severity: "critico", active: true, createdAt: minutesAgo(3) });
 });
 
+const SAT_LEAK_MOTION = { device_id: "AC-RSN-1", property_id: "p1", label: "WC", capabilities: ["leak", "motion"], battery: 70, last_seen: minutesAgo(3) };
+
+test("fuga: o alerta fica ativo até limparem — movimento ou porta DEPOIS da fuga não o apagam", () => {
+  const snap = buildSnapshot(
+    rows({
+      satellites: [SAT_LEAK_MOTION],
+      events: [
+        { node_id: "AC-RSN-1", event: "door_closed", recorded_at: minutesAgo(1) },
+        { node_id: "AC-RSN-1", event: "motion_detected", recorded_at: minutesAgo(2) },
+        { node_id: "AC-RSN-1", event: "leak_detected", recorded_at: minutesAgo(600) },
+        { node_id: "AC-RSN-1", event: "leak_detected", recorded_at: minutesAgo(900) }
+      ]
+    }),
+    NOW
+  );
+  expect(snap.satellites[0].leakState).toBe("alert");
+  // a hora do alerta é a da FUGA mais recente, não a do último evento qualquer
+  expect(snap.alerts.find((a) => a.tag === "Fuga de Água")?.createdAt).toBe(minutesAgo(600));
+});
+
+test("fuga: sem nenhum leak_detected (só movimento/porta) não há alerta", () => {
+  const snap = buildSnapshot(
+    rows({
+      satellites: [SAT_LEAK_MOTION],
+      events: [
+        { node_id: "AC-RSN-1", event: "motion_detected", recorded_at: minutesAgo(2) },
+        { node_id: "AC-RSN-1", event: "door_open", recorded_at: minutesAgo(5) }
+      ]
+    }),
+    NOW
+  );
+  expect(snap.satellites[0].leakState).toBe("normal");
+  expect(snap.alerts).toEqual([]);
+});
+
+test("fuga: um satélite sem a capacidade «leak» nunca gera alerta de fuga", () => {
+  const snap = buildSnapshot(
+    rows({
+      satellites: [{ ...SAT_LEAK_MOTION, capabilities: ["motion"] }],
+      events: [{ node_id: "AC-RSN-1", event: "leak_detected", recorded_at: minutesAgo(2) }]
+    }),
+    NOW
+  );
+  expect(snap.alerts).toEqual([]);
+});
+
+test("atividade escondida (dono sem consentimento): sem last_seen é «não sei» (null), nunca «offline»", () => {
+  const semAtividade = { ...SAT_LEAK_MOTION, last_seen: null };
+  const escondida = buildSnapshot(rows({ satellites: [semAtividade] }), NOW, { activityMayBeHidden: true });
+  expect(escondida.satellites[0].online).toBeNull();
+  expect(escondida.satellites[0].lastEventAt).toBeNull();
+  // fora disso (admin) mantém-se o comportamento de sempre
+  const admin = buildSnapshot(rows({ satellites: [semAtividade] }), NOW);
+  expect(admin.satellites[0].online).toBe(false);
+  expect(admin.satellites[0].lastEventAt).toBe(new Date(0).toISOString());
+});
+
 test("bateria do satélite vem SÓ da linha do satélite; o sinal (rssi) nunca aparece", () => {
   // Mesmo que alguém acrescente battery/rssi às linhas de eventos, a app não os usa.
   const comExtras = { node_id: "AC-RSN-1", event: "leak_detected", recorded_at: minutesAgo(3), battery: 7, rssi: -91 };

@@ -2,10 +2,11 @@ import { TopBar } from "@/components/TopBar";
 import { InsightCard } from "@/components/AlertCard";
 import { StatCard } from "@/components/StatCard";
 import { IconBulb } from "@/components/icons";
-import { getAlerts, getInsights } from "@/lib/data";
+import { requireOwnerScope } from "@/lib/owner/scope";
 
 export default async function InsightsPage() {
-  const [insights, alerts] = await Promise.all([getInsights(), getAlerts()]);
+  const { data } = await requireOwnerScope();
+  const [insights, alerts] = await Promise.all([data.getInsights(), data.getAlerts()]);
   const criticos = insights.filter((i) => i.severity === "critico").length;
   const avisos = insights.filter((i) => i.severity === "aviso").length;
   const informativos = insights.filter((i) => i.severity === "informativo").length;

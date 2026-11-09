@@ -13,6 +13,12 @@ export function createSessionClient() {
   const cookieStore = cookies();
 
   return createServerClient(env.url, env.anonKey, {
+    // Nunca usar a cache de dados do Next: cada pedido à base de dados é feito
+    // de novo, com a sessão de quem está a pedir. (Uma resposta guardada de um
+    // utilizador poderia ser servida a outro.)
+    global: {
+      fetch: (input, init) => fetch(input, { ...init, cache: "no-store" })
+    },
     cookies: {
       getAll: () => cookieStore.getAll(),
       setAll: (cookiesToSet) => {

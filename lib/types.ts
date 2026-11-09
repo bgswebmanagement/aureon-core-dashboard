@@ -44,8 +44,10 @@ export type Satellite = {
   leakState: DeviceState; // meaningful only if capabilities includes "leak"
   doorWindowState: "Aberto" | "Fechado" | null; // meaningful only if capabilities includes "doorWindow"
   battery: number; // %
-  online: boolean;
-  lastEventAt: string; // ISO
+  // null = não se sabe (o dono sem consentimento do inquilino não vê quando o
+  // satélite reportou pela última vez — isso revelaria atividade).
+  online: boolean | null;
+  lastEventAt: string | null; // ISO
 };
 
 export type Property = {

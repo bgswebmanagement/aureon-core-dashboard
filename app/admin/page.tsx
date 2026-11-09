@@ -6,15 +6,16 @@ import { PropertyCard } from "@/components/PropertyCard";
 import { AlertCard } from "@/components/AlertCard";
 import { IconAlert, IconBuilding, IconDroplet, IconThermo, IconWind } from "@/components/icons";
 import { formatReading } from "@/lib/readings";
-import { getAlerts, getFleetHealth, getHub, getOverviewStats, getProperties, getSatellites, getTenantByProperty } from "@/lib/data";
+import { getAdminReader } from "@/lib/admin/reader";
 
 export default async function AdminOverview() {
   await requireAdminPage();
+  const data = await getAdminReader();
   const [stats, fleet, properties, alerts] = await Promise.all([
-    getOverviewStats(),
-    getFleetHealth(),
-    getProperties(),
-    getAlerts()
+    data.getOverviewStats(),
+    data.getFleetHealth(),
+    data.getProperties(),
+    data.getAlerts()
   ]);
   const activeAlerts = alerts.filter((a) => a.active);
   const criticalAlerts = activeAlerts.filter((a) => a.severity === "critico");
@@ -22,9 +23,9 @@ export default async function AdminOverview() {
   const propertyRows = await Promise.all(
     properties.map(async (p) => ({
       property: p,
-      hub: await getHub(p.id),
-      satellites: await getSatellites(p.id),
-      tenant: await getTenantByProperty(p.id),
+      hub: await data.getHub(p.id),
+      satellites: await data.getSatellites(p.id),
+      tenant: await data.getTenantByProperty(p.id),
       activeAlerts: activeAlerts.filter((a) => a.propertyId === p.id).length
     }))
   );
