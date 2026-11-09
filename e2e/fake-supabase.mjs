@@ -52,7 +52,8 @@ function initialState() {
       ],
       property_members: [
         { user_id: users[1].id, property_id: P1 },
-        { user_id: users[6].id, property_id: P2 }
+        { user_id: users[6].id, property_id: P2 },
+        { user_id: users[2].id, property_id: P1 } // inquilino da Casa Um
       ],
       properties: [
         { id: P1, name: "Casa Um", address: "Rua 1", city: "Lisboa" },

@@ -283,8 +283,8 @@ const DATA_FUNCTIONS = [
   "getAlerts", "getInsights", "getHistory", "getSatelliteEvents", "getConsentGrants", "hasConsent", "getOverviewStats", "getFleetHealth"
 ];
 
-test("estrutura: o âmbito legacy (chave de administração sem login) só sobra em /inquilino e /report", () => {
-  const permitidos = (f: string) => f.startsWith("app/inquilino/") || f.startsWith("app/report/");
+test("estrutura: o âmbito legacy (chave de administração sem login) só sobra em /inquilino", () => {
+  const permitidos = (f: string) => f.startsWith("app/inquilino/");
   const infratores: string[] = [];
   for (const file of SOURCES) {
     const f = rel(file);

@@ -1,18 +1,35 @@
-import { notFound } from "next/navigation";
+import { redirect } from "next/navigation";
 import { PrintButton } from "@/components/PrintButton";
-import { getAlerts, getConsentGrants, getHistory, getHub, getProperty, getSatelliteEvents, getSatellites, getTenantByProperty } from "@/lib/data";
+import { DataError } from "@/components/DataError";
+import type { DataReader } from "@/lib/data";
+import { REPORT_DENIED_URL, requireReportReader } from "@/lib/report-scope";
 import { formatReading, isAbove } from "@/lib/readings";
 import { computeBreachSegments, METRIC_LABEL, METRIC_THRESHOLD, METRIC_UNIT } from "@/lib/report";
 import { formatDateTime } from "@/lib/ui";
 import { filterEventsForViewer } from "@/lib/consent";
 import { Metric } from "@/lib/types";
-import { IconLock } from "@/components/icons";
 
 const EVENT_LABEL: Record<string, string> = {
   leak: "Fuga de água",
   motion: "Movimento",
   doorWindow: "Porta/Janela"
 };
+
+// Só com sessão e nunca da cache de dados: o relatório mostra dados de uma casa.
+export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
+
+async function readReport(data: DataReader, propertyId: string, days: number) {
+  const [hub, satellites, tenant, consentGrants, history, allEvents] = await Promise.all([
+    data.getHub(propertyId),
+    data.getSatellites(propertyId),
+    data.getTenantByProperty(propertyId),
+    data.getConsentGrants(propertyId),
+    data.getHistory(propertyId, days),
+    data.getSatelliteEvents(propertyId, days)
+  ]);
+  return { hub, satellites, tenant, consentGrants, history, allEvents };
+}
 
 export default async function ReportPage({
   params,
@@ -21,30 +38,38 @@ export default async function ReportPage({
   params: { id: string };
   searchParams: { metric?: string; days?: string };
 }) {
-  const property = await getProperty(params.id);
-  if (!property) notFound();
-
-  const [hub, satellites, tenant, consentGrants] = await Promise.all([
-    getHub(property.id),
-    getSatellites(property.id),
-    getTenantByProperty(property.id),
-    getConsentGrants(property.id)
-  ]);
-
+  const data = await requireReportReader();
   const days = Math.min(30, Math.max(1, Number(searchParams.days) || 14));
   const focusMetric: Metric = (["temperature", "humidity", "voc"] as const).includes(searchParams.metric as Metric)
     ? (searchParams.metric as Metric)
     : "humidity";
 
-  const [history, allEvents] = await Promise.all([getHistory(property.id, days), getSatelliteEvents(property.id, days)]);
+  // Leituras num bloco só: se algo falhar mostra-se um erro claro (nunca
+  // dados de demonstração). O redirect fica fora do try.
+  let loaded;
+  try {
+    // Casa que não existe ou de que a pessoa não é membro: a mesma resposta.
+    const property = await data.getProperty(params.id);
+    loaded = property
+      ? {
+          property,
+          ...(await readReport(data, property.id, days))
+        }
+      : null;
+  } catch {
+    return <DataError />;
+  }
+  if (!loaded) redirect(REPORT_DENIED_URL);
+  const { property, hub, satellites, tenant, consentGrants, history, allEvents } = loaded;
+
   const threshold = METRIC_THRESHOLD[focusMetric];
   const segments = computeBreachSegments(history, focusMetric, threshold);
-  // This document is generated for the owner/agency (e.g. for a dispute), so
-  // it applies the same tenant-consent restriction as the owner dashboard:
-  // leak/hub data always included, motion/door-window only if the tenant has
-  // authorized it for this property.
+  // O relatório é o documento do DONO/agência (por exemplo, numa disputa), por
+  // isso aplica sempre a restrição do dono — mesmo quando quem o abre é o
+  // administrador ou o inquilino: fuga e dados do hub sempre; movimento e
+  // porta/janela só com autorização do inquilino. Não diz quantos eventos
+  // ficaram de fora (isso revelaria que existem).
   const events = filterEventsForViewer(allEvents, "owner", consentGrants);
-  const hiddenCount = allEvents.length - events.length;
 
   return (
     <div className="min-h-screen bg-white px-10 py-10 text-slate-900 print:px-0 print:py-0">
@@ -174,12 +199,6 @@ export default async function ReportPage({
           <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500">
             Eventos dos Satélites no Período ({events.length})
           </h2>
-          {hiddenCount > 0 && (
-            <p className="mb-3 flex items-center gap-1.5 text-xs text-slate-500">
-              <IconLock className="h-3.5 w-3.5" /> {hiddenCount} evento{hiddenCount > 1 ? "s" : ""} de movimento/porta-janela
-              não incluído{hiddenCount > 1 ? "s" : ""} neste relatório — requer autorização do inquilino.
-            </p>
-          )}
           {events.length === 0 ? (
             <p className="rounded border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">Nenhum evento registado.</p>
           ) : (

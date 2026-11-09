@@ -181,11 +181,14 @@ vazio; se a leitura falhar vê uma mensagem clara — **nunca dados de demonstra
 
 Camadas de dados: `lib/data-rules.ts` (regras puras), `lib/data-scope.ts` (com que identidade se lê:
 administrador, sessão ou o modo antigo `legacy`) e `lib/data.ts` (`createDataReader(scope)`). O modo
-`legacy` (chave de administração sem login) só sobra em `/inquilino` e `/report/[id]` até serem passados
-à sessão; um teste falha se for usado noutro sítio. Regras de ouro: sem `unstable_cache`, sem
+`legacy` (chave de administração sem login) só sobra em `/inquilino` até ser passado à sessão (PR 5); um teste falha se for usado noutro sítio. Regras de ouro: sem `unstable_cache`, sem
 `revalidate`, sem dados em variáveis de módulo; o cliente de sessão faz `fetch` com `cache: "no-store"` e
 o layout do dono tem `dynamic = "force-dynamic"` e `fetchCache = "force-no-store"`. Dos eventos dos
 satélites só se lêem `node_id`, `event` e `recorded_at` (nunca `battery` nem `rssi`).
+`/report/[id]` exige login (`lib/report-scope.ts`): o administrador abre qualquer casa; dono e inquilino só as
+suas, lidas com a sessão deles. Casa alheia e casa inexistente dão a mesma resposta (`/sem-acesso?motivo=relatorio`).
+O relatório é sempre o documento do dono: movimento e porta/janela só aparecem com autorização do inquilino,
+mesmo para o administrador e o inquilino, e não diz quantos eventos ficaram de fora.
 O alerta de fuga conta só eventos `leak_detected` e fica ativo até alguém o limpar (ainda por fazer).
 
 ## API contract for Count Customs
