@@ -1,8 +1,8 @@
 -- ---------------------------------------------------------------------------
 -- Aureon Core — Auth PR 4: LIMPEZA das regras antigas (owner_id / profiles.property_id)
 --
--- *** PARA REVISÃO — NÃO APLICADO. Só se aplica com autorização do Bruno, depois
--- *** de um ensaio com ROLLBACK (ver auth_pr4_down.sql para reverter).
+-- *** APLICADO na base de dados real pelo Bruno (partes A e C; a parte B fica para
+-- *** mais tarde). Reverter: auth_pr4_down.sql.
 --
 -- Contexto: o PR 1 acrescentou regras novas (por property_members) SEM apagar as
 -- antigas, que usam properties.owner_id e profiles.property_id. O Postgres junta
@@ -43,7 +43,7 @@ drop policy if exists "tenants manage their consent grants" on consent_grants;  
 -- alter table properties drop column if exists owner_id;
 -- alter table profiles   drop column if exists property_id;
 
--- PARTE C — OPCIONAL, em comentário: esconder bateria e sinal dos eventos ----
+-- PARTE C — (aplicada): esconder bateria e sinal dos eventos ----
 -- A tabela rsn_events tem as colunas battery e rssi (valores EXATOS em cada
 -- evento). As regras de linha deixam o dono ver os eventos de fuga; sem esta
 -- parte, uma conta com sessão podia pedir battery/rssi desses eventos
@@ -54,6 +54,6 @@ drop policy if exists "tenants manage their consent grants" on consent_grants;  
 -- «select *» em rsn_events, passam a falhar com «permission denied».
 -- A service_role (ingest e /admin) não é afetada.
 --
--- revoke select on rsn_events from authenticated;
--- grant select (id, hub_id, property_id, node_id, event, recorded_at, created_at)
---   on rsn_events to authenticated;
+revoke select on rsn_events from authenticated;
+grant select (id, hub_id, property_id, node_id, event, recorded_at, created_at)
+  on rsn_events to authenticated;

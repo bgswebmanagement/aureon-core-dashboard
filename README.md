@@ -140,8 +140,8 @@ palavra-passe incorretos.»; uma conta que não seja de administrador nunca rece
 inquilinos continuam a entrar só por link no email. A palavra-passe define-se no Supabase (Authentication →
 Users); nunca vai para o código, para a URL nem para os registos.
 
-Só `/admin` exige login (de administrador); as páginas de dono e inquilino e `/report/[id]` continuam abertas até
-aos próximos passos. O middleware apenas renova o cookie e não corre em `/api/*` (o `/api/ingest` do firmware
+Exigem login: `/admin` (administrador), `/proprietario` (dono) e `/report/[id]`. **`/inquilino` continua aberto e a ler tudo
+com o modo antigo até ao PR 5 — não convidar inquilinos reais antes disso.** O middleware apenas renova o cookie e não corre em `/api/*` (o `/api/ingest` do firmware
 não é tocado).
 
 Configuração necessária:

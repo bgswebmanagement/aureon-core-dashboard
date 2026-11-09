@@ -1,6 +1,6 @@
 -- ---------------------------------------------------------------------------
 -- Aureon Core — Auth PR 4: REVERSÃO de auth_pr4_up.sql
--- *** PARA REVISÃO — NÃO APLICADO.
+-- *** Reversão do auth_pr4_up.sql (partes A e C aplicadas; só usar se for mesmo preciso).
 --
 -- Recria as 10 regras antigas exatamente como estavam na base de dados real
 -- (copiadas de pg_policies). ATENÇÃO: reverter volta a abrir a porta descrita em
@@ -12,8 +12,8 @@
 -- alter table properties add column if not exists owner_id uuid references auth.users(id);
 -- alter table profiles   add column if not exists property_id uuid references properties(id);
 
--- PARTE C (só se tiver sido aplicada): devolver a leitura de todas as colunas
--- grant select on rsn_events to authenticated;
+-- PARTE C (foi aplicada): devolver a leitura de todas as colunas
+grant select on rsn_events to authenticated;
 
 -- PARTE A: recriar as regras antigas
 create policy "owners manage their properties" on properties
