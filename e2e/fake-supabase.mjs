@@ -32,8 +32,12 @@ function initialState() {
     { id: "d0000000-0000-4000-8000-000000000004", email: "semperfil@teste.invalid", confirmed: true },
     { id: "e0000000-0000-4000-8000-000000000005", email: "pendente@teste.invalid", confirmed: false },
     // administrador com o acesso desativado (banido)
-    { id: "f0000000-0000-4000-8000-000000000006", email: "admin-desativado@teste.invalid", confirmed: true, banned: "2999-01-01T00:00:00Z" }
+    { id: "f0000000-0000-4000-8000-000000000006", email: "admin-desativado@teste.invalid", confirmed: true, banned: "2999-01-01T00:00:00Z" },
+    // segundo dono (com a Casa Dois) e dono sem casas — para os testes de isolamento
+    { id: "70000000-0000-4000-8000-000000000007", email: "dono2@teste.invalid", confirmed: true },
+    { id: "80000000-0000-4000-8000-000000000008", email: "dono-sem-casas@teste.invalid", confirmed: true }
   ];
+  const ago = (minutes) => new Date(Date.now() - minutes * 60000).toISOString();
   return {
     users,
     tables: {
@@ -42,16 +46,45 @@ function initialState() {
         { id: users[1].id, role: "owner" },
         { id: users[2].id, role: "tenant" },
         { id: users[4].id, role: "owner" },
-        { id: users[5].id, role: "admin" }
+        { id: users[5].id, role: "admin" },
+        { id: users[6].id, role: "owner" },
+        { id: users[7].id, role: "owner" }
       ],
-      property_members: [{ user_id: users[1].id, property_id: P1 }],
+      property_members: [
+        { user_id: users[1].id, property_id: P1 },
+        { user_id: users[6].id, property_id: P2 },
+        { user_id: users[2].id, property_id: P1 } // inquilino da Casa Um
+      ],
       properties: [
         { id: P1, name: "Casa Um", address: "Rua 1", city: "Lisboa" },
         { id: P2, name: "Casa Dois", address: "Rua 2", city: "Porto" }
       ],
-      tenants: []
+      tenants: [],
+      hubs: [
+        { id: "hub-1", device_id: "AC-HUB-0001", property_id: P1, location: "Sala Um", last_seen: ago(2) },
+        { id: "hub-2", device_id: "AC-HUB-0002", property_id: P2, location: "Sala Dois", last_seen: ago(3) }
+      ],
+      // Valores DISTINTIVOS de propósito (bateria 87/63, som -37.25/-52.75, e nos
+      // eventos battery 36–38 e rssi -92…-94), para os testes provarem o que o
+      // dono vê e o que não vê.
+      satellites: [
+        { id: "sat-1", device_id: "AC-RSN-0001", hub_id: "hub-1", property_id: P1, label: "Casa de Banho Um", capabilities: ["leak", "motion"], battery: 87, last_seen: ago(9) },
+        { id: "sat-2", device_id: "AC-RSN-0002", hub_id: "hub-2", property_id: P2, label: "Casa de Banho Dois", capabilities: ["leak", "motion"], battery: 63, last_seen: ago(11) }
+      ],
+      sensor_readings: [
+        { id: "r1", hub_id: "hub-1", property_id: P1, recorded_at: ago(2), temperature: 21.5, humidity: 48, voc: 90, pressure: 1010, sound_dbfs: -37.25, sound_max_dbfs: -20.5, sound_loud_seconds: 3 },
+        { id: "r2", hub_id: "hub-2", property_id: P2, recorded_at: ago(3), temperature: 23.5, humidity: 52, voc: 95, pressure: 1011, sound_dbfs: -52.75, sound_max_dbfs: -40.5, sound_loud_seconds: 4 }
+      ],
+      rsn_events: [
+        { id: "e1", node_id: "AC-RSN-0001", hub_id: "hub-1", property_id: P1, event: "motion_detected", recorded_at: ago(9), battery: 37, rssi: -93 },
+        { id: "e2", node_id: "AC-RSN-0001", hub_id: "hub-1", property_id: P1, event: "leak_detected", recorded_at: ago(2880), battery: 38, rssi: -94 },
+        { id: "e3", node_id: "AC-RSN-0002", hub_id: "hub-2", property_id: P2, event: "motion_detected", recorded_at: ago(11), battery: 36, rssi: -92 }
+      ],
+      consent_grants: []
     },
-    log: []
+    log: [],
+    // true = as leituras das contas de utilizador falham (erro 500), para testar o ecrã de erro
+    failUserReads: false
   };
 }
 
@@ -72,7 +105,7 @@ const userJson = (u) => ({
   updated_at: "2026-01-01T00:00:00Z"
 });
 
-const ROLE_BY_TOKEN = { "tok-admin": 0, "tok-owner": 1, "tok-tenant": 2, "tok-norole": 3 };
+const ROLE_BY_TOKEN = { "tok-admin": 0, "tok-owner": 1, "tok-tenant": 2, "tok-norole": 3, "tok-owner2": 6, "tok-owner0": 7 };
 
 function send(res, status, body, headers = {}) {
   const payload = body === undefined ? "" : JSON.stringify(body);
@@ -93,6 +126,66 @@ function applyFilters(rows, params) {
     }
   }
   return out;
+}
+
+function applyOrderLimit(rows, params) {
+  let out = rows;
+  const order = params.get("order");
+  if (order) {
+    const [col, dir] = order.split(".");
+    out = [...out].sort((a, b) => (a[col] < b[col] ? -1 : a[col] > b[col] ? 1 : 0) * (dir === "desc" ? -1 : 1));
+  }
+  const limit = Number(params.get("limit"));
+  return limit > 0 ? out.slice(0, limit) : out;
+}
+
+// O que uma conta de UTILIZADOR (não a chave de administração) consegue ler,
+// imitando as regras reais da base de dados: só as suas casas, vistas que
+// escondem o que o consentimento não permite, e NADA das tabelas de base
+// sensor_readings / satellites. Devolve null = «permission denied».
+function userVisibleRows(table, user, params) {
+  const role = state.tables.profiles.find((p) => p.id === user.id)?.role;
+  const props = new Set(state.tables.property_members.filter((m) => m.user_id === user.id).map((m) => m.property_id));
+  const mine = (rows) => rows.filter((r) => props.has(r.property_id));
+  const consent = (pid, category) =>
+    (state.tables.consent_grants ?? []).some((g) => g.property_id === pid && g.category === category && g.active);
+  const sees = (pid, category) => role === "tenant" || consent(pid, category);
+  switch (table) {
+    case "profiles":
+      return state.tables.profiles.filter((p) => p.id === user.id);
+    case "property_members":
+      return state.tables.property_members.filter((m) => m.user_id === user.id);
+    case "properties":
+      return state.tables.properties.filter((p) => props.has(p.id));
+    case "hubs":
+    case "tenants":
+    case "consent_grants":
+      return mine(state.tables[table] ?? []);
+    case "sensor_readings_visible":
+      return mine(state.tables.sensor_readings ?? []).map((r) => {
+        const sound = sees(r.property_id, "sound");
+        return { ...r, sound_dbfs: sound ? r.sound_dbfs : null, sound_max_dbfs: sound ? r.sound_max_dbfs : null, sound_loud_seconds: sound ? r.sound_loud_seconds : null };
+      });
+    case "satellites_visible":
+      return mine(state.tables.satellites ?? []).map((s) => {
+        const restricted = s.capabilities.filter((c) => c === "motion" || c === "doorWindow");
+        const activity = restricted.every((c) => sees(s.property_id, c));
+        return { ...s, battery: activity ? s.battery : Math.floor(s.battery / 10) * 10, last_seen: activity ? s.last_seen : null };
+      });
+    case "rsn_events": {
+      // Parte C do SQL: sem battery, rssi nem «*».
+      const columns = String(params.get("select") ?? "*").split(",").map((c) => c.trim());
+      if (columns.some((c) => c === "*" || c === "" || c === "battery" || c === "rssi")) return null;
+      return mine(state.tables.rsn_events ?? []).filter((e) => {
+        if (e.event === "leak_detected") return true;
+        if (e.event === "motion_detected") return sees(e.property_id, "motion");
+        if (e.event === "door_open" || e.event === "door_closed") return sees(e.property_id, "doorWindow");
+        return false;
+      });
+    }
+    default:
+      return null; // inclui sensor_readings, satellites, alerts…
+  }
 }
 
 async function readBody(req) {
@@ -122,6 +215,23 @@ const server = http.createServer(async (req, res) => {
   if (path === "/__log") return send(res, 200, state.log);
   if (path === "/__credentials") {
     return send(res, 200, Object.fromEntries(CREDENTIALS.map((c) => [c.key, { email: c.email, password: PASSWORD[c.key] }])));
+  }
+
+  if (path === "/__fail" && req.method === "POST") {
+    state.failUserReads = body?.on === true;
+    return send(res, 200, { ok: true });
+  }
+  if (path === "/__consent" && req.method === "POST") {
+    state.tables.consent_grants.push({
+      id: randomUUID(),
+      property_id: body.property_id,
+      category: body.category,
+      reason: null,
+      granted_at: new Date().toISOString(),
+      expires_at: null,
+      active: true
+    });
+    return send(res, 200, { ok: true });
   }
 
   // O registo nunca guarda palavras-passe.
@@ -157,7 +267,7 @@ const server = http.createServer(async (req, res) => {
   if (path === "/auth/v1/verify" && req.method === "POST") {
     const type = body?.type;
     const hash = String(body?.token_hash ?? "");
-    const role = /^valid-(admin|owner|tenant|norole)/.exec(hash)?.[1];
+    const role = /^valid-(admin|owner2|owner0|owner|tenant|norole)/.exec(hash)?.[1];
     if (!["invite", "email", "magiclink"].includes(type) || !role) {
       return send(res, 403, { code: 403, error_code: "otp_expired", msg: "Email link is invalid or has expired" });
     }
@@ -216,19 +326,23 @@ const server = http.createServer(async (req, res) => {
   const rest = /^\/rest\/v1\/([a-z_]+)$/.exec(path);
   if (rest) {
     const table = rest[1];
-    // Uma conta normal só consegue ler a SUA linha de `profiles` (como as regras reais).
+    // Uma conta de utilizador só LÊ, e só o que as regras reais deixam (ver userVisibleRows).
+    let userRows = null;
     if (!service) {
       const userIndex = ROLE_BY_TOKEN[bearer];
-      const ownProfileRead = table === "profiles" && req.method === "GET" && userIndex !== undefined;
-      if (!ownProfileRead) return send(res, 401, { code: "42501", message: `permission denied for table ${table}` });
+      const denied = () => send(res, 401, { code: "42501", message: `permission denied for table ${table}` });
+      if (userIndex === undefined || req.method !== "GET") return denied();
+      if (state.failUserReads && table !== "profiles") return send(res, 500, { code: "XX000", message: "falha simulada" });
+      userRows = userVisibleRows(table, state.users[userIndex], url.searchParams);
+      if (userRows === null) return denied();
     }
-    const rows = state.tables[table] ?? (state.tables[table] = []);
+    const rows = userRows ?? state.tables[table] ?? (state.tables[table] = []);
     const accept = String(req.headers.accept ?? "");
     const wantsObject = accept.includes("vnd.pgrst.object");
     const prefersRows = String(req.headers.prefer ?? "").includes("return=representation");
     const reply = (list, status = 200) => (wantsObject ? send(res, status, list[0] ?? null) : send(res, status, list));
 
-    if (req.method === "GET") return reply(applyFilters(rows, url.searchParams));
+    if (req.method === "GET") return reply(applyOrderLimit(applyFilters(rows, url.searchParams), url.searchParams));
 
     if (req.method === "POST") {
       const items = Array.isArray(body) ? body : [body];

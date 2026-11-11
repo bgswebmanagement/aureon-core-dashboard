@@ -1,6 +1,6 @@
 import { Sidebar } from "@/components/Sidebar";
 import { adminNav } from "@/lib/nav";
-import { getAlerts } from "@/lib/data";
+import { getAdminReader } from "@/lib/admin/reader";
 import { getCurrentAccount } from "@/lib/auth/session";
 import { requireAdminPage } from "@/lib/admin/guard";
 
@@ -21,8 +21,9 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   // Só administradores. Cada página de /admin repete esta verificação: o layout
   // não volta a correr quando se navega entre páginas no browser.
   await requireAdminPage();
+  const data = await getAdminReader();
 
-  const alerts = await getAlerts();
+  const alerts = await data.getAlerts();
   const activeCount = alerts.filter((a) => a.active).length;
   const account = await getCurrentAccount();
 

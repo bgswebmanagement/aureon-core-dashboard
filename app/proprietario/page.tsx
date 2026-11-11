@@ -6,20 +6,21 @@ import { HubCard } from "@/components/HubCard";
 import { SatelliteCard } from "@/components/SatelliteCard";
 import { IconAlert, IconBuilding, IconDroplet, IconThermo } from "@/components/icons";
 import { formatReading } from "@/lib/readings";
-import { getAlerts, getConsentGrants, getHub, getOverviewStats, getProperties, getSatellites, getTenantByProperty } from "@/lib/data";
+import { requireOwnerScope } from "@/lib/owner/scope";
 
 export default async function OwnerOverview() {
-  const [stats, properties, alerts] = await Promise.all([getOverviewStats(), getProperties(), getAlerts()]);
+  const { data } = await requireOwnerScope();
+  const [stats, properties, alerts] = await Promise.all([data.getOverviewStats(), data.getProperties(), data.getAlerts()]);
   const activeAlerts = alerts.filter((a) => a.active);
   const criticalAlert = activeAlerts.find((a) => a.severity === "critico");
 
   const propertyRows = await Promise.all(
     properties.map(async (p) => ({
       property: p,
-      hub: await getHub(p.id),
-      satellites: await getSatellites(p.id),
-      consentGrants: await getConsentGrants(p.id),
-      tenant: await getTenantByProperty(p.id),
+      hub: await data.getHub(p.id),
+      satellites: await data.getSatellites(p.id),
+      consentGrants: await data.getConsentGrants(p.id),
+      tenant: await data.getTenantByProperty(p.id),
       activeAlerts: activeAlerts.filter((a) => a.propertyId === p.id).length
     }))
   );

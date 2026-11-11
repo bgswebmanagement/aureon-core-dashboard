@@ -3,20 +3,21 @@ import { requireAdminPage } from "@/lib/admin/guard";
 import { StatCard } from "@/components/StatCard";
 import { PropertyCard } from "@/components/PropertyCard";
 import { IconBuilding } from "@/components/icons";
-import { getAlerts, getHub, getProperties, getSatellites, getTenantByProperty } from "@/lib/data";
+import { getAdminReader } from "@/lib/admin/reader";
 
 export default async function AdminPropertiesPage() {
   await requireAdminPage();
-  const [properties, alerts] = await Promise.all([getProperties(), getAlerts()]);
+  const data = await getAdminReader();
+  const [properties, alerts] = await Promise.all([data.getProperties(), data.getAlerts()]);
   const activeAlerts = alerts.filter((a) => a.active);
   const withAlerts = properties.filter((p) => p.status !== "normal").length;
 
   const rows = await Promise.all(
     properties.map(async (p) => ({
       property: p,
-      hub: await getHub(p.id),
-      satellites: await getSatellites(p.id),
-      tenant: await getTenantByProperty(p.id),
+      hub: await data.getHub(p.id),
+      satellites: await data.getSatellites(p.id),
+      tenant: await data.getTenantByProperty(p.id),
       activeAlerts: activeAlerts.filter((a) => a.propertyId === p.id).length
     }))
   );

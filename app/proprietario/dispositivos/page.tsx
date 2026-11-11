@@ -1,5 +1,7 @@
 import { DevicesView } from "@/components/DevicesView";
+import { requireOwnerScope } from "@/lib/owner/scope";
 
 export default async function DevicesPage() {
-  return <DevicesView viewerRole="owner" role="Proprietário" />;
+  const { data } = await requireOwnerScope();
+  return <DevicesView data={data} viewerRole="owner" role="Proprietário" />;
 }

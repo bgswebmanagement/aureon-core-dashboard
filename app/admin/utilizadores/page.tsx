@@ -2,7 +2,7 @@ import { TopBar } from "@/components/TopBar";
 import { loadAccounts } from "@/lib/admin/accounts";
 import { requireAdminPage } from "@/lib/admin/guard";
 import { createAdminClient } from "@/lib/admin/service-client";
-import { getAlerts } from "@/lib/data";
+import { getAdminReader } from "@/lib/admin/reader";
 import { InviteForm } from "./InviteForm";
 import { UsersTable } from "./UsersTable";
 
@@ -13,8 +13,9 @@ export const metadata = { title: "Utilizadores — Aureon Core" };
 export default async function AdminUsersPage() {
   // Verificação própria da página (não depende só do layout).
   const admin = await requireAdminPage();
+  const reader = await getAdminReader();
 
-  const alerts = await getAlerts();
+  const alerts = await reader.getAlerts();
   const activeAlerts = alerts.filter((a) => a.active).length;
   const db = createAdminClient();
   const data = db ? await loadAccounts(db) : null;

@@ -8,9 +8,35 @@ export const dynamic = "force-dynamic";
 export const metadata = { title: "Sem acesso — Aureon Core", robots: { index: false } };
 
 // Conta com sessão iniciada mas sem papel atribuído em `profiles`.
-export default async function NoAccessPage() {
+export default async function NoAccessPage({ searchParams }: { searchParams: { motivo?: string } }) {
   const account = await getCurrentAccount();
   if (!account) redirect("/login");
+
+  // Relatório de uma casa a que a pessoa não tem acesso (ou que não existe: é a
+  // mesma resposta). A pessoa tem papel, por isso fica aqui com a mensagem e um
+  // link para a sua página inicial.
+  if (account.role && searchParams.motivo === "relatorio") {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-bg px-6 py-16">
+        <div className="w-full max-w-sm text-center">
+          <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-lg bg-white/10 text-muted">
+            <IconLock className="h-5 w-5" />
+          </div>
+          <h1 className="mt-6 text-2xl font-bold">Relatório indisponível</h1>
+          <p className="mt-2 text-sm text-muted">
+            Não tem acesso a este relatório. Verifique o endereço ou volte à sua página inicial.
+          </p>
+          <a
+            href={homeForRole(account.role)}
+            className="mt-6 inline-block w-full rounded-lg border border-border px-3 py-2 text-sm text-muted hover:border-accent/40 hover:text-white"
+          >
+            Ir para a minha página inicial
+          </a>
+        </div>
+      </main>
+    );
+  }
+
   if (account.role) redirect(homeForRole(account.role));
 
   return (

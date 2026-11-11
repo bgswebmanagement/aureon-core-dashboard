@@ -6,31 +6,33 @@ import { SatelliteCard } from "@/components/SatelliteCard";
 import { AlertCard } from "@/components/AlertCard";
 import { IconDownload } from "@/components/icons";
 import { statusColor, statusLabel } from "@/lib/ui";
-import { getAlerts, getConsentGrants, getHub, getProperty, getSatellites, getTenantByProperty } from "@/lib/data";
+import type { DataReader } from "@/lib/data";
 import { ViewerRole } from "@/lib/types";
 
 // Shared single-property detail view used by both the owner dashboard
 // (/proprietario/propriedades/[id], restricted per tenant consent) and the
 // Aureon Core admin dashboard (/admin/propriedades/[id], unrestricted).
 export async function PropertyDetailView({
+  data,
   propertyId,
   viewerRole,
   role
 }: {
+  data: DataReader;
   propertyId: string;
   viewerRole: ViewerRole;
   role: "Proprietário" | "Aureon Core";
 }) {
-  const property = await getProperty(propertyId);
+  const property = await data.getProperty(propertyId);
   if (!property) notFound();
 
   const [hub, satellites, consentGrants, tenant, alerts, allAlerts] = await Promise.all([
-    getHub(property.id),
-    getSatellites(property.id),
-    getConsentGrants(property.id),
-    getTenantByProperty(property.id),
-    getAlerts(property.id),
-    getAlerts()
+    data.getHub(property.id),
+    data.getSatellites(property.id),
+    data.getConsentGrants(property.id),
+    data.getTenantByProperty(property.id),
+    data.getAlerts(property.id),
+    data.getAlerts()
   ]);
 
   return (

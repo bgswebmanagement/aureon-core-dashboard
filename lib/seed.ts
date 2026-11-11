@@ -376,7 +376,7 @@ export function generateSatelliteEvents(propertyId: string, days: number): Satel
       satelliteId: sat.id,
       satelliteLabel: sat.label,
       type: sat.leakState === "alert" ? "leak" : sat.capabilities[0],
-      timestamp: sat.lastEventAt
+      timestamp: sat.lastEventAt ?? FIXED_NOW.toISOString()
     });
   }
 

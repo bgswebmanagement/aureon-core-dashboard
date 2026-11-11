@@ -1,7 +1,7 @@
 import { TopBar } from "@/components/TopBar";
 import { HubCard } from "@/components/HubCard";
 import { SatelliteCard } from "@/components/SatelliteCard";
-import { getAlerts, getConsentGrants, getHub, getProperties, getSatellites } from "@/lib/data";
+import type { DataReader } from "@/lib/data";
 import { ViewerRole } from "@/lib/types";
 
 // Shared "all devices, grouped by property" view used by both the owner
@@ -9,21 +9,25 @@ import { ViewerRole } from "@/lib/types";
 // Aureon Core admin dashboard (/admin/dispositivos, unrestricted — same
 // access level admin staff already have via the Supabase table editor).
 export async function DevicesView({
+  data,
   viewerRole,
   role
 }: {
+  // Leitor de dados do pedido: com a sessão do dono, ou com o âmbito de
+  // administrador. Quem chama decide; esta vista não escolhe a identidade.
+  data: DataReader;
   viewerRole: ViewerRole;
   role: "Proprietário" | "Inquilino" | "Aureon Core";
 }) {
-  const [properties, alerts] = await Promise.all([getProperties(), getAlerts()]);
+  const [properties, alerts] = await Promise.all([data.getProperties(), data.getAlerts()]);
   const activeAlerts = alerts.filter((a) => a.active);
 
   const rows = await Promise.all(
     properties.map(async (p) => ({
       property: p,
-      hub: await getHub(p.id),
-      satellites: await getSatellites(p.id),
-      consentGrants: await getConsentGrants(p.id)
+      hub: await data.getHub(p.id),
+      satellites: await data.getSatellites(p.id),
+      consentGrants: await data.getConsentGrants(p.id)
     }))
   );
 

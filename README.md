@@ -140,8 +140,8 @@ palavra-passe incorretos.»; uma conta que não seja de administrador nunca rece
 inquilinos continuam a entrar só por link no email. A palavra-passe define-se no Supabase (Authentication →
 Users); nunca vai para o código, para a URL nem para os registos.
 
-Só `/admin` exige login (de administrador); as páginas de dono e inquilino e `/report/[id]` continuam abertas até
-aos próximos passos. O middleware apenas renova o cookie e não corre em `/api/*` (o `/api/ingest` do firmware
+Exigem login: `/admin` (administrador), `/proprietario` (dono) e `/report/[id]`. **`/inquilino` continua aberto e a ler tudo
+com o modo antigo até ao PR 5 — não convidar inquilinos reais antes disso.** O middleware apenas renova o cookie e não corre em `/api/*` (o `/api/ingest` do firmware
 não é tocado).
 
 Configuração necessária:
@@ -169,6 +169,27 @@ Testes do login e do acesso a `/admin` (browser real + pedidos manuais, contra o
 Supabase de mentira em `e2e/fake-supabase.mjs`, sem tocar na base de dados): `npm run test:e2e`. Usa o Chrome instalado (`PW_CHANNEL=msedge` para o Edge).
 Cobrem a verificação de origem de `/auth/entrar` e `/auth/sair`, incluindo `Origin: null` (que os
 browsers enviam quando a página tem `referrer: no-referrer`) e pedidos de outros sites.
+
+### Páginas do dono (`/proprietario`): leitura com a sessão da própria pessoa
+
+As páginas do dono **não usam a chave de administração**. Lêem com a sessão de quem está autenticado
+(`lib/owner/scope.ts` → `requireOwnerScope()`, chamado no layout e em **cada** página) e quem decide o
+que ele vê é a base de dados (casas por `property_members`, consentimento do inquilino, vistas
+`sensor_readings_visible` e `satellites_visible`). Sem sessão vai para `/login`; administrador para
+`/admin`; inquilino para `/inquilino`; conta sem papel para `/sem-acesso`. Dono sem casas vê um ecrã
+vazio; se a leitura falhar vê uma mensagem clara — **nunca dados de demonstração**.
+
+Camadas de dados: `lib/data-rules.ts` (regras puras), `lib/data-scope.ts` (com que identidade se lê:
+administrador, sessão ou o modo antigo `legacy`) e `lib/data.ts` (`createDataReader(scope)`). O modo
+`legacy` (chave de administração sem login) só sobra em `/inquilino` até ser passado à sessão (PR 5); um teste falha se for usado noutro sítio. Regras de ouro: sem `unstable_cache`, sem
+`revalidate`, sem dados em variáveis de módulo; o cliente de sessão faz `fetch` com `cache: "no-store"` e
+o layout do dono tem `dynamic = "force-dynamic"` e `fetchCache = "force-no-store"`. Dos eventos dos
+satélites só se lêem `node_id`, `event` e `recorded_at` (nunca `battery` nem `rssi`).
+`/report/[id]` exige login (`lib/report-scope.ts`): o administrador abre qualquer casa; dono e inquilino só as
+suas, lidas com a sessão deles. Casa alheia e casa inexistente dão a mesma resposta (`/sem-acesso?motivo=relatorio`).
+O relatório é sempre o documento do dono: movimento e porta/janela só aparecem com autorização do inquilino,
+mesmo para o administrador e o inquilino, e não diz quantos eventos ficaram de fora.
+O alerta de fuga conta só eventos `leak_detected` e fica ativo até alguém o limpar (ainda por fazer).
 
 ## API contract for Count Customs
 
