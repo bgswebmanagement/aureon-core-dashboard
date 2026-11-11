@@ -4,19 +4,17 @@ import { HubCard } from "@/components/HubCard";
 import { SatelliteCard } from "@/components/SatelliteCard";
 import { AlertCard } from "@/components/AlertCard";
 import { IconAlert, IconDroplet, IconThermo, IconWind } from "@/components/icons";
-import { getAlerts, getHub, getProperty, getSatellites, getTenantByProperty } from "@/lib/data";
+import { requireTenantScope } from "@/lib/tenant/scope";
 import { statusColor, statusLabel } from "@/lib/ui";
 import { formatReading, VOC_WARMING_UP_LABEL } from "@/lib/readings";
-import { DEMO_TENANT_PROPERTY_ID } from "@/lib/tenant";
 
 export default async function TenantOverview() {
-  const property = await getProperty(DEMO_TENANT_PROPERTY_ID);
-  if (!property) return null;
-  const [hub, satellites, alerts, tenant] = await Promise.all([
-    getHub(property.id),
-    getSatellites(property.id),
-    getAlerts(property.id),
-    getTenantByProperty(property.id)
+  const { data, property } = await requireTenantScope();
+  if (!property) return null; // (o layout já mostra o ecrã de «sem casa»)
+  const [hub, satellites, alerts] = await Promise.all([
+    data.getHub(property.id),
+    data.getSatellites(property.id),
+    data.getAlerts(property.id)
   ]);
   const active = alerts.filter((a) => a.active);
 
@@ -24,11 +22,6 @@ export default async function TenantOverview() {
     <>
       <TopBar title={property.name} subtitle={property.address} role="Inquilino" alertCount={active.length} />
       <div className="space-y-8 p-6">
-        <div className="rounded-xl border border-border bg-panel2 p-3 text-xs text-muted">
-          Vista de demonstração — {tenant?.name}. Cada inquilino real veria apenas os dados da sua própria habitação
-          (aplicado por Row Level Security no Supabase).
-        </div>
-
         <div className="flex items-center justify-between">
           <span className={`rounded-full border px-3 py-1 text-sm ${statusColor(property.status)}`}>{statusLabel(property.status)}</span>
         </div>

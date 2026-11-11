@@ -1,16 +1,15 @@
 import { TopBar } from "@/components/TopBar";
 import { HistoryClient } from "@/components/HistoryClient";
-import { getAlerts, getHistory, getProperty, getSatelliteEvents } from "@/lib/data";
-import { DEMO_TENANT_PROPERTY_ID } from "@/lib/tenant";
+import { requireTenantScope } from "@/lib/tenant/scope";
 
 export default async function TenantHistoryPage() {
-  const property = await getProperty(DEMO_TENANT_PROPERTY_ID);
-  if (!property) return null;
+  const { data, property } = await requireTenantScope();
+  if (!property) return null; // (o layout já mostra o ecrã de «sem casa»)
 
   const [alerts, history, events] = await Promise.all([
-    getAlerts(property.id),
-    getHistory(property.id, 14),
-    getSatelliteEvents(property.id, 14)
+    data.getAlerts(property.id),
+    data.getHistory(property.id, 14),
+    data.getSatelliteEvents(property.id, 14)
   ]);
 
   return (

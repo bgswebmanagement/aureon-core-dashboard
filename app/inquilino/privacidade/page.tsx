@@ -1,20 +1,19 @@
 import { TopBar } from "@/components/TopBar";
 import { IconLock, IconShield } from "@/components/icons";
 import { ConsentManager } from "@/components/ConsentManager";
-import { getAlerts, getConsentGrants, getProperty, getSatellites, isLiveMode } from "@/lib/data";
-import { DEMO_TENANT_PROPERTY_ID } from "@/lib/tenant";
+import { requireTenantScope } from "@/lib/tenant/scope";
 import { RestrictedCategory, SatelliteCapability } from "@/lib/types";
 
 const ALL_RESTRICTED: RestrictedCategory[] = ["motion", "doorWindow", "sound"];
 
 export default async function TenantPrivacyPage() {
-  const property = await getProperty(DEMO_TENANT_PROPERTY_ID);
-  if (!property) return null;
+  const { data, property } = await requireTenantScope();
+  if (!property) return null; // (o layout já mostra o ecrã de «sem casa»)
 
   const [satellites, grants, alerts] = await Promise.all([
-    getSatellites(property.id),
-    getConsentGrants(property.id),
-    getAlerts(property.id)
+    data.getSatellites(property.id),
+    data.getConsentGrants(property.id),
+    data.getAlerts(property.id)
   ]);
 
   // Only show a toggle for categories a satellite at this property can
@@ -58,7 +57,7 @@ export default async function TenantPrivacyPage() {
             restritos (movimento ou porta/janela).
           </div>
         ) : (
-          <ConsentManager propertyId={property.id} categories={categories} initialGrants={grants} isLiveMode={isLiveMode} />
+          <ConsentManager propertyId={property.id} categories={categories} initialGrants={grants} isLiveMode />
         )}
 
         <div className="rounded-xl border border-border bg-panel2 p-3 text-xs text-muted">

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ChartMetric, ConsentGrant, HistoryPoint, Property, SatelliteEvent, ViewerRole } from "@/lib/types";
 import { formatDateTime } from "@/lib/ui";
 import { formatReading, isAbove } from "@/lib/readings";
-import { idealRangeLabel } from "@/lib/seed";
+import { idealRangeLabel } from "@/lib/readings";
 import { filterEventsForViewer, isCategoryVisible } from "@/lib/consent";
 import { AllMetricsChart, SingleMetricChart } from "./HistoryChart";
 import { IconDownload, IconLock } from "./icons";

@@ -236,10 +236,12 @@ test("estrutura: sem cache partilhada nem variáveis de módulo com dados", () =
   }
 });
 
-test("estrutura: só o âmbito legacy cai para dados de demonstração", () => {
+test("estrutura: sem dados de demonstração nem modo antigo; só leituras por sessão ou administrador", () => {
   const scope = read("lib/data-scope.ts");
-  expect(scope.match(/allowDemoFallback: true/g)?.length).toBe(1);
-  expect(read("lib/admin/data-scope.ts")).toContain("allowDemoFallback: false");
+  for (const file of DATA_FILES) {
+    expect(read(file), file).not.toMatch(/allowDemoFallback|legacyServiceScope|from "\.\/seed"|seed[A-Z]/);
+  }
+  expect(scope).toContain('kind: "admin" | "session"');
   // o âmbito de sessão lê das vistas, nunca das tabelas de base
   expect(scope).toContain('readingsTable: "sensor_readings_visible"');
   expect(scope).toContain('satellitesTable: "satellites_visible"');

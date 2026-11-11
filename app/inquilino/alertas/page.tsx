@@ -1,10 +1,11 @@
 import { TopBar } from "@/components/TopBar";
 import { AlertCard } from "@/components/AlertCard";
-import { getAlerts } from "@/lib/data";
-import { DEMO_TENANT_PROPERTY_ID } from "@/lib/tenant";
+import { requireTenantScope } from "@/lib/tenant/scope";
 
 export default async function TenantAlertsPage() {
-  const alerts = await getAlerts(DEMO_TENANT_PROPERTY_ID);
+  const { data, property } = await requireTenantScope();
+  if (!property) return null; // (o layout já mostra o ecrã de «sem casa»)
+  const alerts = await data.getAlerts(property.id);
   const active = alerts.filter((a) => a.active);
 
   return (

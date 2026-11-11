@@ -1,12 +1,14 @@
 import fs from "node:fs";
 import path from "node:path";
 import { expect, test, type APIRequestContext } from "@playwright/test";
-import { PROPERTIES } from "../lib/seed";
 
 // PR 4: as páginas do DONO leem os dados com a SESSÃO do próprio dono (nunca
 // com a chave de administração) e a base de dados decide o que ele vê. Corre
 // contra o site real e o Supabase falso (e2e/fake-supabase.mjs), que imita as
 // regras reais: casas por associação, consentimento, vistas, sem tabelas base.
+
+// Nomes dos antigos dados de demonstração (já apagados): nunca podem aparecer.
+const NOMES_DE_DEMONSTRACAO = ["Apartamento Rua das Flores", "Moradia Quinta do Sol", "Estúdio Bairro Alto", "Sofia Andrade"];
 
 const FAKE = "http://127.0.0.1:54329";
 const P1 = "11111111-1111-4111-8111-111111111111"; // Casa Um (dono)
@@ -99,7 +101,7 @@ test("dono com 0 casas: ecrã vazio em todas as páginas, sem dados de ninguém 
     const res = await get(request, "owner0", p);
     expect(res.status, p).toBe(200);
     expect(res.html, p).toContain("Ainda não tem propriedades associadas");
-    for (const nome of ["Casa Um", "Casa Dois", "Sala Um", "Sala Dois", "Rua 1", "Rua 2", ...PROPERTIES.map((x) => x.name)]) {
+    for (const nome of ["Casa Um", "Casa Dois", "Sala Um", "Sala Dois", "Rua 1", "Rua 2", ...NOMES_DE_DEMONSTRACAO]) {
       expect(res.html, `${p}: ${nome}`).not.toContain(nome);
     }
   }
@@ -109,7 +111,7 @@ test("dono com 0 casas: ecrã vazio em todas as páginas, sem dados de ninguém 
 // ---------------------------------------------------------------------------
 // c) Dono A não vê nada da casa B
 // ---------------------------------------------------------------------------
-const DADOS_DA_CASA_DOIS = ["Casa Dois", "Rua 2", "Sala Dois", "Casa de Banho Dois", "AC-HUB-0002", "AC-RSN-0002", "23.5°C", "-52.75", "-40.5", PROPERTIES[0].name];
+const DADOS_DA_CASA_DOIS = ["Casa Dois", "Rua 2", "Sala Dois", "Casa de Banho Dois", "AC-HUB-0002", "AC-RSN-0002", "23.5°C", "-52.75", "-40.5", ...NOMES_DE_DEMONSTRACAO];
 const DADOS_DA_CASA_UM = ["Casa Um", "Rua 1", "Sala Um", "Casa de Banho Um", "AC-HUB-0001", "AC-RSN-0001", "21.5°C"];
 
 test("dono da Casa Um: vê a sua casa e NADA da Casa Dois, em nenhuma página", async ({ request }) => {
@@ -256,7 +258,7 @@ test("se a leitura falhar: mensagem clara, sem dados de demonstração nem detal
     const res = await get(request, "owner", p);
     expect(res.html, p).toContain("Não foi possível carregar os dados");
     expect(res.html, p).not.toContain("falha simulada");
-    for (const nome of PROPERTIES.map((x) => x.name)) expect(res.html, `${p}: ${nome}`).not.toContain(nome);
+    for (const nome of NOMES_DE_DEMONSTRACAO) expect(res.html, `${p}: ${nome}`).not.toContain(nome);
     expect(res.html, p).not.toContain("Casa Um");
   }
 });
@@ -283,22 +285,24 @@ const DATA_FUNCTIONS = [
   "getAlerts", "getInsights", "getHistory", "getSatelliteEvents", "getConsentGrants", "hasConsent", "getOverviewStats", "getFleetHealth"
 ];
 
-test("estrutura: o âmbito legacy (chave de administração sem login) só sobra em /inquilino", () => {
-  const permitidos = (f: string) => f.startsWith("app/inquilino/");
+test("estrutura: o modo antigo (chave de administração sem login) e os dados de demonstração já não existem", () => {
   const infratores: string[] = [];
   for (const file of SOURCES) {
     const f = rel(file);
-    if (f === "lib/data.ts" || f === "lib/data-scope.ts") continue;
     const source = text(file);
-    // importa funções de leitura «antigas» de "@/lib/data"?
+    // nenhuma função de leitura «antiga» exportada por lib/data é importada
     for (const m of source.matchAll(/import\s*\{([^}]*)\}\s*from\s*"(?:@\/lib\/data|\.\/data|\.\.\/lib\/data)"/g)) {
       const nomes = m[1].split(",").map((n) => n.trim().replace(/^type\s+/, ""));
-      if (nomes.some((n) => DATA_FUNCTIONS.includes(n)) && !permitidos(f)) infratores.push(`${f}: importa funções legacy de lib/data`);
+      if (nomes.some((n) => DATA_FUNCTIONS.includes(n))) infratores.push(`${f}: importa funções antigas de lib/data`);
     }
-    if (source.includes("legacyServiceScope") && !permitidos(f)) infratores.push(`${f}: usa legacyServiceScope`);
+    if (/legacyServiceScope|allowDemoFallback|DEMO_TENANT/.test(source)) infratores.push(`${f}: usa o modo antigo / demonstração`);
+    if (/from\s*"(?:@\/lib|\.|\.\.)\/(?:lib\/)?(?:seed|tenant|prng)"/.test(source)) infratores.push(`${f}: importa a demonstração (seed)`);
     if (/from\s*"@\/lib\/supabase"/.test(source) && f !== "app/api/ingest/route.ts") infratores.push(`${f}: importa lib/supabase (cliente de serviço)`);
   }
   expect(infratores).toEqual([]);
+  for (const apagado of ["lib/seed.ts", "lib/tenant.ts", "lib/prng.ts"]) {
+    expect(fs.existsSync(path.join(ROOT, apagado)), apagado).toBe(false);
+  }
 });
 
 test("estrutura: o layout e TODAS as páginas do dono chamam requireOwnerScope, sem importar leituras antigas", () => {
@@ -312,7 +316,8 @@ test("estrutura: o dono lê com a sessão (vistas), sem cache de dados e sempre 
   const layout = text(path.join(ROOT, "app/proprietario/layout.tsx"));
   expect(layout).toContain('export const dynamic = "force-dynamic"');
   expect(layout).toContain('export const fetchCache = "force-no-store"');
-  expect(text(path.join(ROOT, "lib/owner/scope.ts"))).toContain("createDataReader(sessionScope())");
+  expect(text(path.join(ROOT, "lib/owner/scope.ts"))).toContain("getSessionReader()");
+  expect(text(path.join(ROOT, "lib/session-reader.ts"))).toContain("createDataReader(sessionScope())");
   expect(text(path.join(ROOT, "lib/owner/scope.ts"))).not.toContain("legacyServiceScope");
   expect(text(path.join(ROOT, "lib/auth/server-client.ts"))).toContain('cache: "no-store"');
   // as páginas de dono não usam a chave de serviço

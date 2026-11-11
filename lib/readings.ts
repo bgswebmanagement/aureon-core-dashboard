@@ -1,3 +1,5 @@
+import type { Metric } from "./types";
+
 // Helpers for sensor values that can be missing (null). The VOC sensor in
 // particular is omitted by the firmware while it warms up.
 
@@ -17,4 +19,17 @@ export function isAbove(value: number | null | undefined, threshold: number): bo
 export function averageOrNull(values: (number | null | undefined)[]): number | null {
   const present = values.filter((v): v is number => typeof v === "number");
   return present.length ? present.reduce((s, v) => s + v, 0) / present.length : null;
+}
+
+const IDEAL_RANGE: Record<Metric, [number, number]> = {
+  temperature: [19, 24],
+  humidity: [40, 60],
+  voc: [0, 60]
+};
+
+export function idealRangeLabel(metric: Metric): string {
+  const [lo, hi] = IDEAL_RANGE[metric];
+  if (metric === "temperature") return `Ideal: ${lo}–${hi}°C`;
+  if (metric === "humidity") return `Ideal: ${lo}–${hi}%`;
+  return `Ideal: <${hi}`;
 }
