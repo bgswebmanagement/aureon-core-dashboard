@@ -57,7 +57,7 @@ export default async function TenantPrivacyPage() {
             restritos (movimento ou porta/janela).
           </div>
         ) : (
-          <ConsentManager propertyId={property.id} categories={categories} initialGrants={grants} isLiveMode />
+          <ConsentManager categories={categories} initialGrants={grants} />
         )}
 
         <div className="rounded-xl border border-border bg-panel2 p-3 text-xs text-muted">

@@ -202,6 +202,23 @@ test("bateria do satélite vem SÓ da linha do satélite; o sinal (rssi) nunca a
   expect(json).not.toContain("-91");
 });
 
+test("autorizações: uma expirada nunca conta como ativa (como na base de dados)", () => {
+  const base = { id: "c", property_id: "p1", category: "motion" as const, reason: null, granted_at: minutesAgo(500), active: true };
+  const snap = buildSnapshot(
+    rows({
+      consents: [
+        { ...base, id: "sem-prazo", expires_at: null },
+        { ...base, id: "futura", category: "sound" as const, expires_at: new Date(NOW.getTime() + 3600000).toISOString() },
+        { ...base, id: "expirada", category: "doorWindow" as const, expires_at: minutesAgo(10) },
+        { ...base, id: "retirada", active: false, expires_at: null }
+      ]
+    }),
+    NOW
+  );
+  const ativa = Object.fromEntries(snap.consentGrants.map((g) => [g.id, g.active]));
+  expect(ativa).toEqual({ "sem-prazo": true, futura: true, expirada: false, retirada: false });
+});
+
 test("o resultado só depende das linhas e de «now» (mesmos dados, mesma saída)", () => {
   const input = rows({ readings: [reading(5, { humidity: 80 }), reading(15, { voc: 300 })] });
   expect(buildSnapshot(input, NOW)).toEqual(buildSnapshot(input, NOW));

@@ -285,7 +285,10 @@ export function buildSnapshot(raw: RawRows, now: Date, options: BuildOptions = {
     reason: c.reason ?? undefined,
     grantedAt: c.granted_at,
     expiresAt: c.expires_at ?? undefined,
-    active: c.active
+    // «ativa» = marcada como ativa E ainda não expirada (como a regra da base de
+    // dados, que ignora as expiradas) — assim uma autorização expirada nunca
+    // aparece como válida, nem ao dono nem ao inquilino.
+    active: c.active && (!c.expires_at || new Date(c.expires_at).getTime() > now.getTime())
   }));
 
   // Alertas/conselhos, calculados como em lib/seed.ts mas a partir do estado
