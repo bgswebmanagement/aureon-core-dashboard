@@ -75,6 +75,7 @@ function initialState() {
       // dono vê e o que não vê.
       satellites: [
         { id: "sat-1", device_id: "AC-RSN-0001", hub_id: "hub-1", property_id: P1, label: "Casa de Banho Um", capabilities: ["leak", "motion"], battery: 87, last_seen: ago(9) },
+        { id: "sat-3", device_id: "AC-RSN-0003", hub_id: "hub-1", property_id: P1, label: "Porta Um", capabilities: ["doorWindow"], battery: 74, last_seen: ago(20) },
         { id: "sat-2", device_id: "AC-RSN-0002", hub_id: "hub-2", property_id: P2, label: "Casa de Banho Dois", capabilities: ["leak", "motion"], battery: 63, last_seen: ago(11) }
       ],
       sensor_readings: [
@@ -84,6 +85,7 @@ function initialState() {
       rsn_events: [
         { id: "e1", node_id: "AC-RSN-0001", hub_id: "hub-1", property_id: P1, event: "motion_detected", recorded_at: ago(9), battery: 37, rssi: -93 },
         { id: "e2", node_id: "AC-RSN-0001", hub_id: "hub-1", property_id: P1, event: "leak_detected", recorded_at: ago(2880), battery: 38, rssi: -94 },
+        { id: "e4", node_id: "AC-RSN-0003", hub_id: "hub-1", property_id: P1, event: "door_open", recorded_at: ago(20), battery: 35, rssi: -95 },
         { id: "e3", node_id: "AC-RSN-0002", hub_id: "hub-2", property_id: P2, event: "motion_detected", recorded_at: ago(11), battery: 36, rssi: -92 }
       ],
       consent_grants: []
