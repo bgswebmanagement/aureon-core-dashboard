@@ -40,13 +40,11 @@ Implementation: `lib/types.ts` (`ViewerRole`, `RestrictedCategory`, `ConsentGran
 screen that shows satellite events (`SatelliteCard`, `HistoryClient`, the dispute report at
 `/report/[id]`) passes a `viewerRole` + the property's consent grants through this filter, and
 shows a small lock indicator/count whenever something is hidden — so an owner always knows data
-exists but isn't visible, rather than silently seeing an incomplete picture. The demo seed data
-includes one active grant (property `p2`, `motion`, "disputa de ruído") so both the default
-locked state (p1, p3) and the unlocked-by-consent state (p2) are visible side by side.
+exists but isn't visible, rather than silently seeing an incomplete picture. (The demo seed data
+no longer exists: the app only shows real data, read with the signed-in user's session.)
 
-Consent changes made in `/inquilino/privacidade` today are **not yet persisted** — there's no
-Supabase `consent_grants` table wired up until Supabase is configured (see below). The UI says so
-directly ("modo demo").
+Consent changes made in `/inquilino/privacidade` **are persisted** in `consent_grants` (see
+"Páginas do inquilino" below); the database rules and views enforce what the owner sees.
 
 ## Hardware model (important)
 
@@ -73,8 +71,8 @@ Pilot Program Agreement ("temperatura, humidade, aberturas de portas/janelas, mo
 
 - **Real data layer, not client-side simulation.** The Manus version ran entirely in the browser
   with `setInterval`-based random jitter and no backend. This version has a proper data-access
-  layer (`lib/data.ts`) that reads from seed data today and from Supabase once configured —
-  same component code either way.
+  layer (`lib/data.ts`) that reads from Supabase with the signed-in user's session (or the admin
+  client for `/admin`). The original demo/seed data has been removed.
 - **A real ingest endpoint.** `POST /api/ingest` accepts one Hub ambient reading plus any
   satellite events since the last sync — see [API contract for Count Customs](#api-contract-for-count-customs)
   below.
@@ -95,8 +93,8 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:3000. With no environment variables set, the app runs in **demo mode**:
-3 seeded pilot properties, fully interactive, no backend required.
+Open http://localhost:3000. The app needs the Supabase environment variables (see below) — there is
+no demo mode any more; without them the data pages show a clear error instead of invented data.
 
 ## Deploying
 
@@ -124,7 +122,7 @@ a GitHub repo from the Vercel dashboard.
 4. In the Supabase table editor, insert one row per `properties`, one `hubs` row per property
    (its `device_id` must match what Count Customs flashes onto that unit), and one `satellites`
    row per RSN unit (its `device_id` must match the `node_id` the Hub relays).
-5. Redeploy. The app automatically switches from seed data to Supabase — no code changes.
+5. Redeploy.
 
 ## Login (Supabase Auth, link por email)
 
@@ -140,8 +138,7 @@ palavra-passe incorretos.»; uma conta que não seja de administrador nunca rece
 inquilinos continuam a entrar só por link no email. A palavra-passe define-se no Supabase (Authentication →
 Users); nunca vai para o código, para a URL nem para os registos.
 
-Exigem login: `/admin` (administrador), `/proprietario` (dono) e `/report/[id]`. **`/inquilino` continua aberto e a ler tudo
-com o modo antigo até ao PR 5 — não convidar inquilinos reais antes disso.** O middleware apenas renova o cookie e não corre em `/api/*` (o `/api/ingest` do firmware
+Exigem login: `/admin` (administrador), `/proprietario` (dono), `/inquilino` (inquilino) e `/report/[id]`. O middleware apenas renova o cookie e não corre em `/api/*` (o `/api/ingest` do firmware
 não é tocado).
 
 Configuração necessária:
@@ -180,8 +177,9 @@ que ele vê é a base de dados (casas por `property_members`, consentimento do i
 vazio; se a leitura falhar vê uma mensagem clara — **nunca dados de demonstração**.
 
 Camadas de dados: `lib/data-rules.ts` (regras puras), `lib/data-scope.ts` (com que identidade se lê:
-administrador, sessão ou o modo antigo `legacy`) e `lib/data.ts` (`createDataReader(scope)`). O modo
-`legacy` (chave de administração sem login) só sobra em `/inquilino` até ser passado à sessão (PR 5); um teste falha se for usado noutro sítio. Regras de ouro: sem `unstable_cache`, sem
+administrador ou sessão) e `lib/data.ts` (`createDataReader(scope)`). O antigo modo `legacy` (chave de
+administração sem login) e os dados de demonstração (`lib/seed.ts`) **foram apagados**; um teste falha se
+voltarem. Regras de ouro: sem `unstable_cache`, sem
 `revalidate`, sem dados em variáveis de módulo; o cliente de sessão faz `fetch` com `cache: "no-store"` e
 o layout do dono tem `dynamic = "force-dynamic"` e `fetchCache = "force-no-store"`. Dos eventos dos
 satélites só se lêem `node_id`, `event` e `recorded_at` (nunca `battery` nem `rssi`).
@@ -190,6 +188,25 @@ suas, lidas com a sessão deles. Casa alheia e casa inexistente dão a mesma res
 O relatório é sempre o documento do dono: movimento e porta/janela só aparecem com autorização do inquilino,
 mesmo para o administrador e o inquilino, e não diz quantos eventos ficaram de fora.
 O alerta de fuga conta só eventos `leak_detected` e fica ativo até alguém o limpar (ainda por fazer).
+
+### Páginas do inquilino (`/inquilino`) e consentimentos
+
+O inquilino lê **tudo da sua casa** com a sua própria sessão (`lib/tenant/scope.ts` → `requireTenantScope()`,
+no layout e em cada página): leituras do hub incluindo o som, satélites com bateria exata e estado, eventos
+de fuga/movimento/porta, alertas e histórico. A casa é a primeira por ordem do nome, com o nome bem visível
+no topo (mostra «1.ª de N casas» se tiver várias). Sem casa: ecrã vazio; falha de leitura: erro claro.
+Sem sessão → `/login`; administrador → `/admin`; dono → `/proprietario`; sem papel → `/sem-acesso`.
+
+`/inquilino/privacidade` dá e retira autorizações ao dono **a sério** através da ação do servidor
+`setConsent` (`app/inquilino/privacidade/actions.ts`): só o papel inquilino; a casa vem **sempre da sessão**
+(nunca do que o browser envia); só `motion`, `doorWindow` e `sound`; grava com a sessão do inquilino (as regras
+da base de dados valem sempre); retirar põe `active = false`; conceder desativa primeiro a autorização
+expirada dessa casa e categoria (o índice único conta as expiradas) e depois cria a nova. **Sem prazo no
+piloto** (`expires_at` vazio): o inquilino retira quando quiser. Uma autorização expirada nunca conta como ativa.
+
+SQL do PR 5 (`supabase/auth_pr5_up.sql`, **por aplicar com autorização**): o inquilino lê só a sua própria
+linha em `tenants` (`user_id = auth.uid()`), para o relatório mostrar o nome dele. Reverter: `auth_pr5_down.sql`;
+testes de ensaio (com ROLLBACK): `auth_pr5_tests.sql`.
 
 ## API contract for Count Customs
 
@@ -230,22 +247,13 @@ Content-Type: application/json
 
 ## Known gaps / next steps
 
-- **Auth isn't wired yet.** The role picker on `/` just routes to `/proprietario` or
-  `/inquilino` — there's no login, and `/admin` is reachable by anyone who knows the URL.
-  `supabase/schema.sql` already has `profiles` (now including an `admin` role) + Row Level
-  Security ready for Supabase Auth; wiring the actual sign-in flow (magic link is the easiest for
-  10 non-technical tenants) is the next real step before the pilot goes live — at that point
-  `/admin` should also gate on `profiles.role = 'admin'` instead of relying on the URL being
-  unlisted.
-- **Tenant role is pinned** to one demo property (`lib/tenant.ts`) until auth exists.
-- **Consent grants aren't persisted yet.** `ConsentManager` (used by
-  `/inquilino/privacidade`) holds grants in local React state only. Once Supabase is live, wire
-  its `grant()`/`revoke()` handlers to write to the `consent_grants` table (a Server Action or
-  API route) instead of just updating local state.
-- **Category-level privacy (motion/doorWindow) is enforced in the app layer today**
-  (`lib/consent.ts`), not yet at the database/RLS level — see the note above
-  `consent_grants`' policies in `supabase/schema.sql` for how to harden this later (a view or
-  security-definer RPC that joins `rsn_events` against `consent_grants`).
+- **Login existe** (admin, dono, inquilino e relatório exigem sessão — ver «Login» acima). Falta:
+  a landing page `/` ainda tem o seletor de papéis de demonstração (PR 7), o alerta de fuga ainda não
+  se pode limpar, e o `supabase/schema.sql` consolidado precisa de ser atualizado com os ficheiros
+  `supabase/auth_pr*.sql`.
+- **Privacidade por categoria (movimento/porta/som) é aplicada na base de dados** (regras RLS e vistas
+  `sensor_readings_visible` / `satellites_visible`; ver `supabase/auth_pr1_up.sql`) e a aplicação lê sempre
+  com a sessão de quem pede, por isso não depende só de `lib/consent.ts`.
 - **No offline queue on the API side** — the Hub firmware is responsible for buffering readings
   while offline and retrying `/api/ingest` once connectivity returns.
 - Two known Next.js 14.2.x security advisories remain (SSRF via rewrites, Server Function
@@ -264,11 +272,12 @@ app/                    Routes (App Router)
 components/              UI components (HubCard, SatelliteCard, PropertyCard, AlertCard,
                           DevicesView, PropertyDetailView, ConsentManager, ...)
 lib/
-  seed.ts                Demo dataset (1 hub + 1-3 satellites per property) + alert/insight engine
-                          + demo consent grants
-  data.ts                 Single data-access surface (seed today, Supabase once configured)
+  data-rules.ts           Pure rules: thresholds, alerts, insights
+  data-scope.ts           Who is reading (admin or the user's session)
+  data.ts                 createDataReader(scope): single data-access surface
   consent.ts              Privacy filtering: which satellite event categories a viewer role sees
-  types.ts, ui.ts, nav.ts, report.ts, supabase.ts, tenant.ts
+  types.ts, ui.ts, nav.ts, report.ts, readings.ts, supabase.ts (ingest only)
+  owner/, tenant/, admin/ Per-role guards (requireOwnerScope, requireTenantScope, requireAdminPage)
 supabase/schema.sql      Full schema (properties, hubs, satellites, sensor_readings, rsn_events,
                           alerts, profiles, consent_grants) + Row Level Security for the 10-pilot
                           rollout
