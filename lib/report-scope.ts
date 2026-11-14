@@ -1,5 +1,6 @@
 import "server-only";
 import { redirect } from "next/navigation";
+import { requireAdminPage } from "@/lib/admin/guard";
 import { getAdminReader } from "@/lib/admin/reader";
 import { getCurrentAccount } from "@/lib/auth/session";
 import type { DataReader } from "@/lib/data";
@@ -14,7 +15,11 @@ export async function requireReportReader(): Promise<DataReader> {
   const account = await getCurrentAccount();
   if (!account) redirect("/login");
   if (!account.role) redirect("/sem-acesso");
-  if (account.role === "admin") return getAdminReader();
+  if (account.role === "admin") {
+    // O administrador também precisa do segundo fator: sem ele vai pedir o código.
+    await requireAdminPage();
+    return getAdminReader();
+  }
   return getSessionReader();
 }
 

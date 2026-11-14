@@ -5,7 +5,7 @@
 // os que usam a chave de administração ("service"): é assim que os testes
 // provam que uma conta que não é administrador nunca chega a usá-la.
 import http from "node:http";
-import { randomUUID } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 
 const PORT = Number(process.env.FAKE_SUPABASE_PORT ?? 54329);
 export const SERVICE_KEY = "service-key-falsa";
@@ -20,6 +20,44 @@ const CREDENTIALS = [
   { key: "norole", email: "semperfil@teste.invalid", token: "tok-norole" },
   { key: "banned", email: "admin-desativado@teste.invalid", token: "tok-banned" }
 ];
+
+// Tokens com forma de JWT (assinados com um segredo FALSO, só para testes) para
+// o nível de segurança (aal1/aal2) poder ser lido do token. O Supabase falso só
+// aceita os que tenham a assinatura certa e não tenham expirado: um token
+// forjado ou alterado é recusado, como o Supabase a sério faria.
+// (O mesmo segredo está em e2e/fake-jwt.ts.)
+const FAKE_JWT_SECRET = "segredo-falso-so-para-testes";
+const b64 = (v) => Buffer.from(typeof v === "string" ? v : JSON.stringify(v)).toString("base64url");
+function signJwt(payload) {
+  const head = b64({ alg: "HS256", typ: "JWT" });
+  const body = b64(payload);
+  const sig = createHmac("sha256", FAKE_JWT_SECRET).update(`${head}.${body}`).digest("base64url");
+  return `${head}.${body}.${sig}`;
+}
+function verifyJwt(token) {
+  const parts = String(token).split(".");
+  if (parts.length !== 3) return null;
+  const expected = createHmac("sha256", FAKE_JWT_SECRET).update(`${parts[0]}.${parts[1]}`).digest("base64url");
+  if (expected !== parts[2]) return null;
+  try {
+    const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
+    if (typeof payload.exp !== "number" || payload.exp * 1000 < Date.now()) return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}
+const issueJwt = (user, aal) =>
+  signJwt({
+    sub: user.id,
+    aud: "authenticated",
+    role: "authenticated",
+    email: user.email,
+    aal,
+    amr: [{ method: aal === "aal2" ? "totp" : "password", timestamp: Math.floor(Date.now() / 1000) }],
+    session_id: randomUUID(),
+    exp: Math.floor(Date.now() / 1000) + 3600
+  });
 
 const P1 = "11111111-1111-4111-8111-111111111111";
 const P2 = "22222222-2222-4222-8222-222222222222";
@@ -90,6 +128,10 @@ function initialState() {
       ],
       consent_grants: []
     },
+    // fatores de dois passos (TOTP). O administrador de teste já tem um verificado.
+    factors: [
+      { id: "f1111111-1111-4111-8111-111111111111", user_id: users[0].id, factor_type: "totp", status: "verified", friendly_name: "Telemóvel", created_at: "2026-11-01T00:00:00Z" }
+    ],
     log: [],
     // true = as leituras das contas de utilizador falham (erro 500), para testar o ecrã de erro
     failUserReads: false
@@ -99,6 +141,9 @@ function initialState() {
 let state = initialState();
 
 const userJson = (u) => ({
+  factors: state.factors
+    .filter((f) => f.user_id === u.id)
+    .map((f) => ({ id: f.id, factor_type: f.factor_type, status: f.status, friendly_name: f.friendly_name, created_at: f.created_at, updated_at: f.created_at })),
   id: u.id,
   aud: "authenticated",
   role: "authenticated",
@@ -112,6 +157,16 @@ const userJson = (u) => ({
   created_at: "2026-01-01T00:00:00Z",
   updated_at: "2026-01-01T00:00:00Z"
 });
+
+// Quem é o dono do token: os tokens antigos de teste (tok-…) ou um JWT válido (assinatura e validade certas).
+function indexForBearer(bearer) {
+  const legacy = ROLE_BY_TOKEN[bearer];
+  if (legacy !== undefined) return legacy;
+  const payload = verifyJwt(bearer);
+  if (!payload) return undefined;
+  const index = state.users.findIndex((u) => u.id === payload.sub);
+  return index < 0 ? undefined : index;
+}
 
 const ROLE_BY_TOKEN = { "tok-admin": 0, "tok-owner": 1, "tok-tenant": 2, "tok-norole": 3, "tok-owner2": 6, "tok-owner0": 7, "tok-tenant2": 8, "tok-tenant0": 9 };
 
@@ -231,6 +286,16 @@ const server = http.createServer(async (req, res) => {
     return send(res, 200, Object.fromEntries(CREDENTIALS.map((c) => [c.key, { email: c.email, password: PASSWORD[c.key] }])));
   }
 
+  if (path === "/__factors" && req.method === "POST") {
+    // body: { user: "admin", action: "clear" | "add", status?: "verified"|"unverified", name? }
+    const target = state.users.find((u) => u.email === `${body.user}@teste.invalid`);
+    if (!target) return send(res, 404, { msg: "utilizador desconhecido" });
+    if (body.action === "clear") state.factors = state.factors.filter((f) => f.user_id !== target.id);
+    if (body.action === "add") {
+      state.factors.push({ id: randomUUID(), user_id: target.id, factor_type: "totp", status: body.status ?? "verified", friendly_name: body.name ?? "Telemóvel", created_at: new Date().toISOString() });
+    }
+    return send(res, 200, { ok: true });
+  }
   if (path === "/__fail" && req.method === "POST") {
     state.failUserReads = body?.on === true;
     return send(res, 200, { ok: true });
@@ -262,8 +327,9 @@ const server = http.createServer(async (req, res) => {
       return send(res, 400, { code: 400, error_code: "invalid_credentials", msg: "Invalid login credentials" });
     }
     if (user.banned) return send(res, 400, { code: 400, error_code: "user_banned", msg: "User is banned" });
+    const isAdminAccount = credential.key === "admin" || credential.key === "banned";
     return send(res, 200, {
-      access_token: credential.token,
+      access_token: isAdminAccount ? issueJwt(user, "aal1") : credential.token,
       token_type: "bearer",
       expires_in: 3600,
       expires_at: Math.floor(Date.now() / 1000) + 3600,
@@ -274,7 +340,7 @@ const server = http.createServer(async (req, res) => {
 
   // ----- Auth: sessão ------------------------------------------------------
   if (path === "/auth/v1/user" && req.method === "GET") {
-    const index = ROLE_BY_TOKEN[bearer];
+    const index = indexForBearer(bearer);
     if (index === undefined) return send(res, 401, { code: 401, error_code: "bad_jwt", msg: "invalid JWT" });
     return send(res, 200, userJson(state.users[index]));
   }
@@ -288,7 +354,7 @@ const server = http.createServer(async (req, res) => {
     }
     const user = state.users[ROLE_BY_TOKEN[`tok-${role}`]];
     return send(res, 200, {
-      access_token: `tok-${role}`,
+      access_token: role === "admin" ? issueJwt(user, "aal1") : `tok-${role}`,
       token_type: "bearer",
       expires_in: 3600,
       expires_at: Math.floor(Date.now() / 1000) + 3600,
@@ -344,7 +410,7 @@ const server = http.createServer(async (req, res) => {
     // Uma conta de utilizador só LÊ, e só o que as regras reais deixam (ver userVisibleRows).
     let userRows = null;
     if (!service) {
-      const userIndex = ROLE_BY_TOKEN[bearer];
+      const userIndex = indexForBearer(bearer);
       const denied = () => send(res, 401, { code: "42501", message: `permission denied for table ${table}` });
       if (userIndex === undefined) return denied();
       if (req.method !== "GET") {

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { expect, test, type APIRequestContext } from "@playwright/test";
+import { fakeJwt } from "./fake-jwt";
 
 // /report/[id] exige login: administrador (qualquer casa) ou dono/inquilino
 // membro da casa. Casa alheia e casa inexistente têm a MESMA resposta. O
@@ -24,7 +25,7 @@ const USERS: Record<Who, { id: string; email: string; token: string }> = {
 function cookieFor(who: Who): string {
   const u = USERS[who];
   const session = {
-    access_token: u.token,
+    access_token: who === "admin" ? fakeJwt(u.id, "aal2") : u.token,
     token_type: "bearer",
     expires_in: 3600,
     expires_at: Math.floor(Date.now() / 1000) + 3600,

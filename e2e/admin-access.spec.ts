@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
+import { fakeJwt } from "./fake-jwt";
 
 // Provas de que /admin e as ações de /admin/utilizadores só funcionam para
 // administradores, e de que o convite grava o que deve. Corre contra o site
@@ -34,9 +35,10 @@ const ADMIN_PATHS = [
 type Call = { method: string; path: string; query: string; service: boolean; token: string; body?: any };
 
 // Cookie de sessão tal como o @supabase/ssr o escreve (nome derivado do endereço do falso Supabase).
-function sessionValue(role: Role): string {
+function sessionValue(role: Role, aal: "aal1" | "aal2" = "aal2"): string {
+  // O administrador precisa de um token com forma de JWT para o nível de segurança (aal) poder ser lido.
   const session = {
-    access_token: `tok-${role}`,
+    access_token: role === "admin" ? fakeJwt(USERS.admin.id, aal) : `tok-${role}`,
     token_type: "bearer",
     expires_in: 3600,
     expires_at: Math.floor(Date.now() / 1000) + 3600,
@@ -46,7 +48,7 @@ function sessionValue(role: Role): string {
   return "base64-" + Buffer.from(JSON.stringify(session)).toString("base64url");
 }
 const COOKIE_NAME = "sb-127-auth-token";
-const cookieHeader = (role: Role) => `${COOKIE_NAME}=${sessionValue(role)}`;
+const cookieHeader = (role: Role, aal: "aal1" | "aal2" = "aal2") => `${COOKIE_NAME}=${sessionValue(role, aal)}`;
 const addSession = (page: Page, role: Role) =>
   page.context().addCookies([{ name: COOKIE_NAME, value: sessionValue(role), domain: "localhost", path: "/" }]);
 
@@ -228,6 +230,7 @@ test("ações do servidor: o administrador consegue; repetidas por dono, inquili
     { nome: "dono", cookie: cookieHeader("owner") },
     { nome: "inquilino", cookie: cookieHeader("tenant") },
     { nome: "sem perfil", cookie: cookieHeader("norole") },
+    { nome: "administrador só com palavra-passe (aal1)", cookie: cookieHeader("admin", "aal1") },
     { nome: "sem sessão" }
   ];
 

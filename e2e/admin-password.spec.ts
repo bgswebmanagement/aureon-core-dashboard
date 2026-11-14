@@ -106,7 +106,7 @@ test("a palavra-passe nunca aparece nos registos do Supabase falso nem em URLs",
 // ---------------------------------------------------------------------------
 // 2) Sucesso e proteção contra outros sites
 // ---------------------------------------------------------------------------
-test("administrador com a palavra-passe certa: vai para /admin com sessão (cookie httpOnly) e /admin abre", async ({ request }) => {
+test("administrador com a palavra-passe certa: vai para /admin com sessão (cookie httpOnly), mas /admin ainda pede o código de 6 dígitos", async ({ request }) => {
   const c = await credenciais(request);
   const res = await entrar(request, c.admin.email, c.admin.password);
   expect(res.status()).toBe(303);
@@ -118,8 +118,10 @@ test("administrador com a palavra-passe certa: vai para /admin com sessão (cook
   for (const cookie of cookies) expect(cookie.toLowerCase()).toContain("httponly");
 
   const cookieHeader = cookies.map((v) => v.split(";")[0]).join("; ");
+  // a sessão só tem a palavra-passe (aal1): /admin manda pedir o código
   const admin = await request.get("/admin", { headers: { cookie: cookieHeader }, maxRedirects: 0 });
-  expect(admin.status()).toBe(200);
+  expect(admin.status()).toBe(307);
+  expect(admin.headers()["location"]).toMatch(/\/auth\/mfa$/);
 });
 
 test("sem sessão, /admin continua a ir para /login", async ({ request }) => {
@@ -201,7 +203,7 @@ test("browser: todas as falhas mostram exatamente a mesma mensagem e nada na URL
   await page.locator("#admin-email").fill(c.admin.email);
   await page.locator("#admin-password").fill(c.admin.password);
   await page.locator("#admin-login-tab").getByRole("button", { name: "Entrar" }).click();
-  await page.waitForURL(/\/admin$/);
+  await page.waitForURL(/\/auth\/mfa$/); // palavra-passe certa: falta o código de 6 dígitos
   expect(page.url()).not.toContain(c.admin.password);
 });
 
