@@ -1,12 +1,9 @@
 import "server-only";
-import { cache } from "react";
 import { redirect } from "next/navigation";
 import { getAdminReader } from "@/lib/admin/reader";
 import { getCurrentAccount } from "@/lib/auth/session";
-import { createDataReader, type DataReader } from "@/lib/data";
-import { sessionScope } from "@/lib/data-scope";
-
-const sessionReader = cache(() => createDataReader(sessionScope()));
+import type { DataReader } from "@/lib/data";
+import { getSessionReader } from "@/lib/session-reader";
 
 // Quem pode ler dados de um relatório, e com que identidade:
 //   sem sessão → /login · conta sem papel → /sem-acesso
@@ -18,7 +15,7 @@ export async function requireReportReader(): Promise<DataReader> {
   if (!account) redirect("/login");
   if (!account.role) redirect("/sem-acesso");
   if (account.role === "admin") return getAdminReader();
-  return sessionReader();
+  return getSessionReader();
 }
 
 // Casa alheia e casa inexistente têm EXATAMENTE a mesma resposta.

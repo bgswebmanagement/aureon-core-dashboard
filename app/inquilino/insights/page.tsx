@@ -1,10 +1,11 @@
 import { TopBar } from "@/components/TopBar";
 import { InsightCard } from "@/components/AlertCard";
-import { getAlerts, getInsights } from "@/lib/data";
-import { DEMO_TENANT_PROPERTY_ID } from "@/lib/tenant";
+import { requireTenantScope } from "@/lib/tenant/scope";
 
 export default async function TenantInsightsPage() {
-  const [insights, alerts] = await Promise.all([getInsights(DEMO_TENANT_PROPERTY_ID), getAlerts(DEMO_TENANT_PROPERTY_ID)]);
+  const { data, property } = await requireTenantScope();
+  if (!property) return null; // (o layout já mostra o ecrã de «sem casa»)
+  const [insights, alerts] = await Promise.all([data.getInsights(property.id), data.getAlerts(property.id)]);
 
   return (
     <>

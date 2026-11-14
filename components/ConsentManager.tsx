@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { setConsent } from "@/app/inquilino/privacidade/actions";
 import { ConsentGrant, RestrictedCategory } from "@/lib/types";
 import { formatDateTime } from "@/lib/ui";
 import { IconDoor, IconLock, IconMotion, IconSound, IconUnlock } from "./icons";
@@ -25,52 +27,47 @@ const CATEGORY_EXPLANATION: Record<RestrictedCategory, string> = {
     "Nível de ruído relativo (dBFS) do hub: nível médio, máximo e segundos acima de um limiar, a cada 10 minutos. São apenas números — nunca é gravado áudio. Útil em disputas de ruído."
 };
 
-// Client-side toggle for the tenant's privacy controls. This is intentionally
-// visual/optimistic for now: there's no persistence layer until Supabase is
-// configured (see supabase/schema.sql's consent_grants table). Once live,
-// this should call a Server Action / API route that writes to that table
-// instead of just flipping local state.
+// Controlo de privacidade do inquilino. O estado vem SEMPRE do servidor (as
+// autorizações reais em consent_grants); cada clique chama a ação do servidor
+// `setConsent`, que grava com a sessão do inquilino, e depois a página
+// recarrega (router.refresh). A casa nunca é enviada daqui: o servidor usa a
+// casa da sessão. Sem prazo no piloto: o inquilino retira quando quiser.
 export function ConsentManager({
-  propertyId,
   categories,
-  initialGrants,
-  isLiveMode
+  initialGrants
 }: {
-  propertyId: string;
   categories: RestrictedCategory[];
   initialGrants: ConsentGrant[];
-  isLiveMode: boolean;
 }) {
-  const [grants, setGrants] = useState(initialGrants);
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
   const [reasonDraft, setReasonDraft] = useState<Record<string, string>>({});
+  const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null);
 
+  const grants = initialGrants;
   const grantFor = (category: RestrictedCategory) => grants.find((g) => g.category === category && g.active);
 
-  function grant(category: RestrictedCategory) {
-    const reason = reasonDraft[category]?.trim();
-    setGrants((prev) => [
-      ...prev.filter((g) => g.category !== category),
-      {
-        id: `local-${category}-${prev.length}`,
-        propertyId,
-        category,
-        reason: reason || undefined,
-        grantedAt: new Date().toISOString(),
-        active: true
+  function change(category: RestrictedCategory, action: "grant" | "revoke") {
+    setFeedback(null);
+    startTransition(async () => {
+      try {
+        const result = await setConsent(category, action, action === "grant" ? reasonDraft[category] ?? "" : undefined);
+        setFeedback(result.ok ? { ok: true, text: result.message ?? "Guardado." } : { ok: false, text: result.error ?? "Não foi possível guardar." });
+      } catch {
+        setFeedback({ ok: false, text: "Não foi possível guardar. Tente novamente." });
       }
-    ]);
-  }
-
-  function revoke(category: RestrictedCategory) {
-    setGrants((prev) => prev.map((g) => (g.category === category ? { ...g, active: false } : g)));
+      router.refresh();
+    });
   }
 
   return (
     <div className="space-y-4">
-      {!isLiveMode && (
-        <div className="rounded-xl border border-border bg-panel2 p-3 text-xs text-muted">
-          Modo demo — estas alterações não são guardadas de forma permanente ainda. Assim que o Supabase estiver
-          ligado, ficam registadas na tabela <code className="rounded bg-white/10 px-1">consent_grants</code>.
+      {feedback && (
+        <div
+          role={feedback.ok ? "status" : "alert"}
+          className={`rounded-xl border p-3 text-sm ${feedback.ok ? "border-good/40 bg-good/10 text-good" : "border-crit/40 bg-crit/10 text-crit"}`}
+        >
+          {feedback.text}
         </div>
       )}
 
@@ -108,15 +105,17 @@ export function ConsentManager({
 
               {active ? (
                 <button
-                  onClick={() => revoke(category)}
-                  className="shrink-0 rounded-lg border border-border px-3 py-1.5 text-xs text-muted hover:border-crit/40 hover:text-crit"
+                  onClick={() => change(category, "revoke")}
+                  disabled={pending}
+                  className="shrink-0 rounded-lg border border-border px-3 py-1.5 text-xs text-muted hover:border-crit/40 hover:text-crit disabled:opacity-50"
                 >
                   Revogar
                 </button>
               ) : (
                 <button
-                  onClick={() => grant(category)}
-                  className="shrink-0 rounded-lg border border-accent/40 bg-accent/10 px-3 py-1.5 text-xs text-accent hover:bg-accent/20"
+                  onClick={() => change(category, "grant")}
+                  disabled={pending}
+                  className="shrink-0 rounded-lg border border-accent/40 bg-accent/10 px-3 py-1.5 text-xs text-accent hover:bg-accent/20 disabled:opacity-50"
                 >
                   Autorizar
                 </button>
@@ -128,6 +127,8 @@ export function ConsentManager({
                 <label className="text-xs text-muted">Motivo (opcional, ex.: &quot;disputa de ruído — Agosto 2026&quot;)</label>
                 <input
                   type="text"
+                  maxLength={200}
+                  aria-label={`Motivo para ${CATEGORY_LABEL[category]}`}
                   value={reasonDraft[category] ?? ""}
                   onChange={(e) => setReasonDraft((prev) => ({ ...prev, [category]: e.target.value }))}
                   className="mt-1 w-full rounded-lg border border-border bg-panel2 px-3 py-1.5 text-sm text-white placeholder:text-muted/60 focus:border-accent/50 focus:outline-none"

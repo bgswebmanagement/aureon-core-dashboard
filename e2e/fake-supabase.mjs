@@ -35,7 +35,10 @@ function initialState() {
     { id: "f0000000-0000-4000-8000-000000000006", email: "admin-desativado@teste.invalid", confirmed: true, banned: "2999-01-01T00:00:00Z" },
     // segundo dono (com a Casa Dois) e dono sem casas — para os testes de isolamento
     { id: "70000000-0000-4000-8000-000000000007", email: "dono2@teste.invalid", confirmed: true },
-    { id: "80000000-0000-4000-8000-000000000008", email: "dono-sem-casas@teste.invalid", confirmed: true }
+    { id: "80000000-0000-4000-8000-000000000008", email: "dono-sem-casas@teste.invalid", confirmed: true },
+    // segundo inquilino (Casa Dois) e inquilino sem casa
+    { id: "90000000-0000-4000-8000-000000000009", email: "inquilino2@teste.invalid", confirmed: true },
+    { id: "10000000-0000-4000-8000-000000000010", email: "inquilino-sem-casa@teste.invalid", confirmed: true }
   ];
   const ago = (minutes) => new Date(Date.now() - minutes * 60000).toISOString();
   return {
@@ -48,12 +51,15 @@ function initialState() {
         { id: users[4].id, role: "owner" },
         { id: users[5].id, role: "admin" },
         { id: users[6].id, role: "owner" },
-        { id: users[7].id, role: "owner" }
+        { id: users[7].id, role: "owner" },
+        { id: users[8].id, role: "tenant" },
+        { id: users[9].id, role: "tenant" }
       ],
       property_members: [
         { user_id: users[1].id, property_id: P1 },
         { user_id: users[6].id, property_id: P2 },
-        { user_id: users[2].id, property_id: P1 } // inquilino da Casa Um
+        { user_id: users[2].id, property_id: P1 }, // inquilino da Casa Um
+        { user_id: users[8].id, property_id: P2 } // inquilino da Casa Dois
       ],
       properties: [
         { id: P1, name: "Casa Um", address: "Rua 1", city: "Lisboa" },
@@ -69,6 +75,7 @@ function initialState() {
       // dono vê e o que não vê.
       satellites: [
         { id: "sat-1", device_id: "AC-RSN-0001", hub_id: "hub-1", property_id: P1, label: "Casa de Banho Um", capabilities: ["leak", "motion"], battery: 87, last_seen: ago(9) },
+        { id: "sat-3", device_id: "AC-RSN-0003", hub_id: "hub-1", property_id: P1, label: "Porta Um", capabilities: ["doorWindow"], battery: 74, last_seen: ago(20) },
         { id: "sat-2", device_id: "AC-RSN-0002", hub_id: "hub-2", property_id: P2, label: "Casa de Banho Dois", capabilities: ["leak", "motion"], battery: 63, last_seen: ago(11) }
       ],
       sensor_readings: [
@@ -78,6 +85,7 @@ function initialState() {
       rsn_events: [
         { id: "e1", node_id: "AC-RSN-0001", hub_id: "hub-1", property_id: P1, event: "motion_detected", recorded_at: ago(9), battery: 37, rssi: -93 },
         { id: "e2", node_id: "AC-RSN-0001", hub_id: "hub-1", property_id: P1, event: "leak_detected", recorded_at: ago(2880), battery: 38, rssi: -94 },
+        { id: "e4", node_id: "AC-RSN-0003", hub_id: "hub-1", property_id: P1, event: "door_open", recorded_at: ago(20), battery: 35, rssi: -95 },
         { id: "e3", node_id: "AC-RSN-0002", hub_id: "hub-2", property_id: P2, event: "motion_detected", recorded_at: ago(11), battery: 36, rssi: -92 }
       ],
       consent_grants: []
@@ -105,7 +113,7 @@ const userJson = (u) => ({
   updated_at: "2026-01-01T00:00:00Z"
 });
 
-const ROLE_BY_TOKEN = { "tok-admin": 0, "tok-owner": 1, "tok-tenant": 2, "tok-norole": 3, "tok-owner2": 6, "tok-owner0": 7 };
+const ROLE_BY_TOKEN = { "tok-admin": 0, "tok-owner": 1, "tok-tenant": 2, "tok-norole": 3, "tok-owner2": 6, "tok-owner0": 7, "tok-tenant2": 8, "tok-tenant0": 9 };
 
 function send(res, status, body, headers = {}) {
   const payload = body === undefined ? "" : JSON.stringify(body);
@@ -117,10 +125,14 @@ function applyFilters(rows, params) {
   let out = rows;
   for (const [key, value] of params) {
     if (["select", "order", "limit", "offset", "on_conflict", "columns"].includes(key)) continue;
-    const m = /^(eq|in)\.(.*)$/.exec(value);
+    const m = /^(eq|in|lt|lte|gt|gte)\.(.*)$/.exec(value);
     if (!m) continue;
     if (m[1] === "eq") out = out.filter((r) => String(r[key]) === m[2]);
-    else {
+    else if (m[1] !== "in") {
+      // comparações (datas ISO): um valor vazio (null) nunca satisfaz «menor que» (como em SQL)
+      const cmp = { lt: (a, b) => a < b, lte: (a, b) => a <= b, gt: (a, b) => a > b, gte: (a, b) => a >= b }[m[1]];
+      out = out.filter((r) => r[key] != null && cmp(String(r[key]), m[2]));
+    } else {
       const list = m[2].replace(/^\(|\)$/g, "").split(",").map((s) => s.replace(/^"|"$/g, ""));
       out = out.filter((r) => list.includes(String(r[key])));
     }
@@ -148,7 +160,9 @@ function userVisibleRows(table, user, params) {
   const props = new Set(state.tables.property_members.filter((m) => m.user_id === user.id).map((m) => m.property_id));
   const mine = (rows) => rows.filter((r) => props.has(r.property_id));
   const consent = (pid, category) =>
-    (state.tables.consent_grants ?? []).some((g) => g.property_id === pid && g.category === category && g.active);
+    (state.tables.consent_grants ?? []).some(
+      (g) => g.property_id === pid && g.category === category && g.active && (!g.expires_at || g.expires_at > new Date().toISOString())
+    );
   const sees = (pid, category) => role === "tenant" || consent(pid, category);
   switch (table) {
     case "profiles":
@@ -228,8 +242,9 @@ const server = http.createServer(async (req, res) => {
       category: body.category,
       reason: null,
       granted_at: new Date().toISOString(),
-      expires_at: null,
-      active: true
+      expires_at: body.expires_at ?? null,
+      active: true,
+      created_by: null
     });
     return send(res, 200, { ok: true });
   }
@@ -331,7 +346,50 @@ const server = http.createServer(async (req, res) => {
     if (!service) {
       const userIndex = ROLE_BY_TOKEN[bearer];
       const denied = () => send(res, 401, { code: "42501", message: `permission denied for table ${table}` });
-      if (userIndex === undefined || req.method !== "GET") return denied();
+      if (userIndex === undefined) return denied();
+      if (req.method !== "GET") {
+        // Única escrita permitida a uma conta de utilizador: consent_grants, pelas
+        // regras reais («consent: inquilino cria» / «inquilino retira»).
+        if (table !== "consent_grants") return denied();
+        const user = state.users[userIndex];
+        const isTenant = state.tables.profiles.find((p) => p.id === user.id)?.role === "tenant";
+        const mine = new Set(state.tables.property_members.filter((m) => m.user_id === user.id).map((m) => m.property_id));
+        const rls = () => send(res, 403, { code: "42501", message: "new row violates row-level security policy for table \"consent_grants\"" });
+        const grants = state.tables.consent_grants;
+        if (req.method === "POST") {
+          const item = Array.isArray(body) ? body[0] : body;
+          if (!isTenant || !mine.has(item?.property_id)) return rls();
+          if (!["motion", "doorWindow", "sound"].includes(item.category)) {
+            return send(res, 400, { code: "23514", message: "violates check constraint consent_grants_category_check" });
+          }
+          if (grants.some((g) => g.property_id === item.property_id && g.category === item.category && g.active)) {
+            return send(res, 409, { code: "23505", message: "duplicate key value violates unique constraint \"consent_one_active_per_category\"" });
+          }
+          grants.push({
+            id: randomUUID(),
+            property_id: item.property_id,
+            category: item.category,
+            reason: item.reason ?? null,
+            granted_at: new Date().toISOString(), // o gatilho força a data e o autor
+            expires_at: item.expires_at ?? null,
+            active: item.active ?? true,
+            created_by: user.id,
+            revoked_by: null,
+            revoked_at: null
+          });
+          return send(res, 201);
+        }
+        if (req.method === "PATCH") {
+          // só a coluna `active` pode ser alterada, e só para false
+          if (Object.keys(body ?? {}).some((k) => k !== "active")) return denied();
+          if (body?.active !== false) return rls();
+          // USING: inquilino, membro da casa e linha ativa; as outras linhas nem se veem
+          const target = isTenant ? applyFilters(grants, url.searchParams).filter((g) => mine.has(g.property_id) && g.active) : [];
+          for (const g of target) Object.assign(g, { active: false, revoked_by: user.id, revoked_at: new Date().toISOString() });
+          return String(req.headers.prefer ?? "").includes("return=representation") ? send(res, 200, target) : send(res, 204);
+        }
+        return denied();
+      }
       if (state.failUserReads && table !== "profiles") return send(res, 500, { code: "XX000", message: "falha simulada" });
       userRows = userVisibleRows(table, state.users[userIndex], url.searchParams);
       if (userRows === null) return denied();

@@ -1,5 +1,4 @@
-import { cache } from "react";
-import {
+import type {
   Alert,
   ConsentGrant,
   Hub,
@@ -11,29 +10,17 @@ import {
   SatelliteEvent,
   Tenant
 } from "./types";
-import {
-  ALERTS,
-  CONSENT_GRANTS,
-  generateHistory as seedGenerateHistory,
-  generateSatelliteEvents as seedGenerateSatelliteEvents,
-  hasConsent as seedHasConsent,
-  HUBS,
-  INSIGHTS,
-  PROPERTIES,
-  SATELLITES,
-  TENANTS
-} from "./seed";
 import { averageOrNull } from "./readings";
 import { buildSnapshot, eventToCapability, LOW_BATTERY_THRESHOLD, type RawRows, type Snapshot } from "./data-rules";
-import { DataUnavailableError, legacyServiceScope, type DataScope } from "./data-scope";
+import { DataUnavailableError, type DataScope } from "./data-scope";
 
 // ---------------------------------------------------------------------------
 // Camada de dados da aplicação, em três partes:
 //
 //   lib/data-rules.ts  — regras puras (limites, alertas, conselhos). Recebe
 //                        linhas em bruto e devolve o que se mostra.
-//   lib/data-scope.ts  — COM QUE IDENTIDADE se lê (administrador, sessão da
-//                        pessoa, ou o modo antigo "legacy").
+//   lib/data-scope.ts  — COM QUE IDENTIDADE se lê (administrador ou a sessão
+//                        da própria pessoa).
 //   este ficheiro      — lê as linhas através de um âmbito e aplica as regras.
 //
 // `createDataReader(scope)` devolve as funções de leitura para UM âmbito. O
@@ -41,25 +28,19 @@ import { DataUnavailableError, legacyServiceScope, type DataScope } from "./data
 // vive só durante o pedido: nunca há dados numa variável do módulo, por isso
 // nada se partilha entre utilizadores.
 //
-// As funções exportadas no fim (getProperties, getHub, …) são o modo ANTIGO,
-// com o âmbito "legacy" (chave de administração, sem login, com dados de
-// demonstração se falhar). Hoje só /admin, /inquilino e /report/[id] as
-// usam; as páginas do dono passam a usar um leitor com a sessão do dono.
+// Não há dados de demonstração nem modo antigo: se a leitura falhar, é um erro
+// claro (DataUnavailableError), nunca dados inventados.
 // ---------------------------------------------------------------------------
 
+// Só a página inicial pública usa isto (para o cartão «Ligado ao Supabase»).
 export const isLiveMode =
   !!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-// Uma ronda de pedidos às tabelas. Com o âmbito "legacy" os erros de cada
-// pedido são ignorados (como sempre foi); com os outros âmbitos qualquer erro
-// é uma falha clara — uma regra da base de dados a recusar NUNCA pode passar
-// por "não há dados".
-async function loadSnapshot(scope: DataScope): Promise<Snapshot | null> {
+// Uma ronda de pedidos às tabelas. Qualquer erro é uma falha clara — uma regra
+// da base de dados a recusar NUNCA pode passar por «não há dados».
+async function loadSnapshot(scope: DataScope): Promise<Snapshot> {
   const db = scope.db;
-  if (!db) {
-    if (scope.allowDemoFallback) return null;
-    throw new DataUnavailableError("sem ligação à base de dados");
-  }
+  if (!db) throw new DataUnavailableError("sem ligação à base de dados");
 
   try {
     const results = await Promise.all([
@@ -77,10 +58,8 @@ async function loadSnapshot(scope: DataScope): Promise<Snapshot | null> {
       db.from("consent_grants").select("id, property_id, category, reason, granted_at, expires_at, active")
     ]);
 
-    if (!scope.allowDemoFallback) {
-      const failed = results.find((r) => r.error);
-      if (failed?.error) throw new DataUnavailableError(failed.error.message);
-    }
+    const failed = results.find((r) => r.error);
+    if (failed?.error) throw new DataUnavailableError(failed.error.message);
 
     const [properties, hubs, satellites, tenants, readings, events, consents] = results;
     const raw: RawRows = {
@@ -94,10 +73,6 @@ async function loadSnapshot(scope: DataScope): Promise<Snapshot | null> {
     };
     return buildSnapshot(raw, new Date(), { activityMayBeHidden: scope.kind === "session" });
   } catch (err) {
-    if (scope.allowDemoFallback) {
-      console.error("[data] failed to read live Supabase snapshot, falling back to demo data:", err);
-      return null;
-    }
     console.error("[data] leitura falhou:", err);
     throw err instanceof DataUnavailableError ? err : new DataUnavailableError("falha na leitura");
   }
@@ -105,12 +80,11 @@ async function loadSnapshot(scope: DataScope): Promise<Snapshot | null> {
 
 export function createDataReader(scope: DataScope) {
   // Um instantâneo por leitor (ou seja, por pedido).
-  let snapshotPromise: Promise<Snapshot | null> | undefined;
+  let snapshotPromise: Promise<Snapshot> | undefined;
   const getLiveSnapshot = () => (snapshotPromise ??= loadSnapshot(scope));
 
   async function getProperties(): Promise<Property[]> {
-    const live = await getLiveSnapshot();
-    return live ? live.properties : PROPERTIES;
+    return (await getLiveSnapshot()).properties;
   }
 
   async function getProperty(id: string): Promise<Property | undefined> {
@@ -120,20 +94,16 @@ export function createDataReader(scope: DataScope) {
 
   // Um Hub por casa.
   async function getHub(propertyId: string): Promise<Hub | undefined> {
-    const live = await getLiveSnapshot();
-    const hubs = live ? live.hubs : HUBS;
-    return hubs.find((h) => h.propertyId === propertyId);
+    return (await getLiveSnapshot()).hubs.find((h) => h.propertyId === propertyId);
   }
 
   async function getSatellites(propertyId?: string): Promise<Satellite[]> {
-    const live = await getLiveSnapshot();
-    const satellites = live ? live.satellites : SATELLITES;
+    const { satellites } = await getLiveSnapshot();
     return propertyId ? satellites.filter((s) => s.propertyId === propertyId) : satellites;
   }
 
   async function getTenants(): Promise<Tenant[]> {
-    const live = await getLiveSnapshot();
-    return live ? live.tenants : TENANTS;
+    return (await getLiveSnapshot()).tenants;
   }
 
   async function getTenant(id: string): Promise<Tenant | undefined> {
@@ -147,16 +117,14 @@ export function createDataReader(scope: DataScope) {
   }
 
   async function getAlerts(propertyId?: string): Promise<Alert[]> {
-    const live = await getLiveSnapshot();
-    const list = live ? live.alerts : propertyId ? ALERTS.filter((a) => a.propertyId === propertyId) : ALERTS;
-    const filtered = live && propertyId ? list.filter((a) => a.propertyId === propertyId) : list;
+    const { alerts } = await getLiveSnapshot();
+    const filtered = propertyId ? alerts.filter((a) => a.propertyId === propertyId) : alerts;
     return [...filtered].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
   }
 
   async function getInsights(propertyId?: string): Promise<Insight[]> {
-    const live = await getLiveSnapshot();
-    const list = live ? live.insights : propertyId ? INSIGHTS.filter((i) => i.propertyId === propertyId) : INSIGHTS;
-    const filtered = live && propertyId ? list.filter((i) => i.propertyId === propertyId) : list;
+    const { insights } = await getLiveSnapshot();
+    const filtered = propertyId ? insights.filter((i) => i.propertyId === propertyId) : insights;
     return [...filtered].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
   }
 
@@ -164,14 +132,11 @@ export function createDataReader(scope: DataScope) {
   // por casa).
   async function getHistory(propertyId: string, days: number): Promise<HistoryPoint[]> {
     const db = scope.db;
-    if (!db) {
-      if (scope.allowDemoFallback) return seedGenerateHistory(propertyId, days);
-      throw new DataUnavailableError("sem ligação à base de dados");
-    }
+    if (!db) throw new DataUnavailableError("sem ligação à base de dados");
 
     try {
       const live = await getLiveSnapshot();
-      const hub = live?.hubs.find((h) => h.propertyId === propertyId);
+      const hub = live.hubs.find((h) => h.propertyId === propertyId);
       if (!hub) return [];
 
       const cutoff = new Date(Date.now() - days * 24 * 3600000).toISOString();
@@ -181,7 +146,7 @@ export function createDataReader(scope: DataScope) {
         .eq("property_id", propertyId)
         .gte("recorded_at", cutoff)
         .order("recorded_at", { ascending: true });
-      if (error && !scope.allowDemoFallback) throw new DataUnavailableError(error.message);
+      if (error) throw new DataUnavailableError(error.message);
 
       return (data ?? []).map((r) => ({
         timestamp: r.recorded_at,
@@ -193,10 +158,6 @@ export function createDataReader(scope: DataScope) {
         sound_loud_seconds: r.sound_loud_seconds ?? null
       }));
     } catch (err) {
-      if (scope.allowDemoFallback) {
-        console.error("[data] getHistory live query failed, falling back to demo data:", err);
-        return seedGenerateHistory(propertyId, days);
-      }
       console.error("[data] getHistory falhou:", err);
       throw err instanceof DataUnavailableError ? err : new DataUnavailableError("falha na leitura");
     }
@@ -205,14 +166,10 @@ export function createDataReader(scope: DataScope) {
   // Registo de eventos dos satélites de uma casa (fuga/movimento/porta-janela).
   async function getSatelliteEvents(propertyId: string, days: number): Promise<SatelliteEvent[]> {
     const db = scope.db;
-    if (!db) {
-      if (scope.allowDemoFallback) return seedGenerateSatelliteEvents(propertyId, days);
-      throw new DataUnavailableError("sem ligação à base de dados");
-    }
+    if (!db) throw new DataUnavailableError("sem ligação à base de dados");
 
     try {
       const live = await getLiveSnapshot();
-      if (!live) return [];
       const satellitesById = new Map(live.satellites.map((s) => [s.id, s]));
 
       const cutoff = new Date(Date.now() - days * 24 * 3600000).toISOString();
@@ -222,7 +179,7 @@ export function createDataReader(scope: DataScope) {
         .eq("property_id", propertyId)
         .gte("recorded_at", cutoff)
         .order("recorded_at", { ascending: false });
-      if (error && !scope.allowDemoFallback) throw new DataUnavailableError(error.message);
+      if (error) throw new DataUnavailableError(error.message);
 
       const events: SatelliteEvent[] = [];
       for (const e of data ?? []) {
@@ -240,10 +197,6 @@ export function createDataReader(scope: DataScope) {
       }
       return events;
     } catch (err) {
-      if (scope.allowDemoFallback) {
-        console.error("[data] getSatelliteEvents live query failed, falling back to demo data:", err);
-        return seedGenerateSatelliteEvents(propertyId, days);
-      }
       console.error("[data] getSatelliteEvents falhou:", err);
       throw err instanceof DataUnavailableError ? err : new DataUnavailableError("falha na leitura");
     }
@@ -252,23 +205,17 @@ export function createDataReader(scope: DataScope) {
   // Autorizações que o inquilino dá ao dono para ver categorias restritas
   // (presença/comportamento) dos satélites da casa. Ver lib/consent.ts.
   async function getConsentGrants(propertyId?: string): Promise<ConsentGrant[]> {
-    const live = await getLiveSnapshot();
-    const grants = live ? live.consentGrants : CONSENT_GRANTS;
-    return propertyId ? grants.filter((g) => g.propertyId === propertyId) : grants;
+    const { consentGrants } = await getLiveSnapshot();
+    return propertyId ? consentGrants.filter((g) => g.propertyId === propertyId) : consentGrants;
   }
 
   async function hasConsent(propertyId: string, category: RestrictedCategory): Promise<boolean> {
-    const live = await getLiveSnapshot();
-    if (!live) return seedHasConsent(propertyId, category);
-    return live.consentGrants.some((g) => g.propertyId === propertyId && g.category === category && g.active);
+    const { consentGrants } = await getLiveSnapshot();
+    return consentGrants.some((g) => g.propertyId === propertyId && g.category === category && g.active);
   }
 
   async function getOverviewStats() {
-    const live = await getLiveSnapshot();
-    const properties = live ? live.properties : PROPERTIES;
-    const hubs = live ? live.hubs : HUBS;
-    const satellites = live ? live.satellites : SATELLITES;
-    const alerts = live ? live.alerts : ALERTS;
+    const { properties, hubs, satellites, alerts } = await getLiveSnapshot();
 
     // Hubs sem valor (null) ficam fora da média, não contam como 0.
     const avgTemp = averageOrNull(hubs.map((h) => h.temperature));
@@ -293,9 +240,7 @@ export function createDataReader(scope: DataScope) {
   // Saúde da frota para a vista de administração — dispositivos que precisam
   // de atenção física (bateria fraca, offline), de qualquer conta de dono.
   async function getFleetHealth() {
-    const live = await getLiveSnapshot();
-    const hubs = live ? live.hubs : HUBS;
-    const satellites = live ? live.satellites : SATELLITES;
+    const { hubs, satellites } = await getLiveSnapshot();
 
     const hubsOffline = hubs.filter((h) => !h.online).length;
     const satellitesOffline = satellites.filter((s) => !s.online).length;
@@ -330,30 +275,6 @@ export function createDataReader(scope: DataScope) {
 }
 
 export type DataReader = ReturnType<typeof createDataReader>;
-
-// ---------------------------------------------------------------------------
-// MODO ANTIGO ("legacy"): chave de administração, sem login. TEMPORÁRIO — até
-// ao PR 5 (inquilino com sessão) e à passagem de /admin ao âmbito de
-// administrador. O leitor é criado uma vez POR PEDIDO (React cache), nunca
-// guardado de forma global.
-// ---------------------------------------------------------------------------
-const legacyReader = cache(() => createDataReader(legacyServiceScope()));
-
-export const getProperties = () => legacyReader().getProperties();
-export const getProperty = (id: string) => legacyReader().getProperty(id);
-export const getHub = (propertyId: string) => legacyReader().getHub(propertyId);
-export const getSatellites = (propertyId?: string) => legacyReader().getSatellites(propertyId);
-export const getTenants = () => legacyReader().getTenants();
-export const getTenant = (id: string) => legacyReader().getTenant(id);
-export const getTenantByProperty = (propertyId: string) => legacyReader().getTenantByProperty(propertyId);
-export const getAlerts = (propertyId?: string) => legacyReader().getAlerts(propertyId);
-export const getInsights = (propertyId?: string) => legacyReader().getInsights(propertyId);
-export const getHistory = (propertyId: string, days: number) => legacyReader().getHistory(propertyId, days);
-export const getSatelliteEvents = (propertyId: string, days: number) => legacyReader().getSatelliteEvents(propertyId, days);
-export const getConsentGrants = (propertyId?: string) => legacyReader().getConsentGrants(propertyId);
-export const hasConsent = (propertyId: string, category: RestrictedCategory) => legacyReader().hasConsent(propertyId, category);
-export const getOverviewStats = () => legacyReader().getOverviewStats();
-export const getFleetHealth = () => legacyReader().getFleetHealth();
 
 function round1(n: number) {
   return Math.round(n * 10) / 10;

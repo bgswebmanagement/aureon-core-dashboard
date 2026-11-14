@@ -12,7 +12,6 @@ export async function adminDataScope(): Promise<DataScope> {
     kind: "admin",
     db: createAdminClient(),
     readingsTable: "sensor_readings",
-    satellitesTable: "satellites",
-    allowDemoFallback: false
+    satellitesTable: "satellites"
   };
 }
